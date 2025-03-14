@@ -121,3 +121,66 @@ class Sigmoid(Activation):
         """
         # Derivative of Sigmoid
         self.dinputs = delta * (1 - self.output) * self.output
+
+class Softmax(Activation):
+
+    def __init__(self) -> None:
+        """
+        Softmax activation function.
+        """
+        pass
+
+    def forward(self, inputs: np.ndarray) -> None:
+        """
+        Forward pass using Softmax. Creates output attribute.
+
+        Parameters
+        ----------
+        inputs : numpy.ndarray
+            Input matrix.
+
+        Returns
+        -------
+        None
+        """
+        exp = np.exp(inputs - np.max(inputs, axis=-1, keepdims=True))
+        self.output = exp / np.sum(exp, axis=-1, keepdims=True)
+
+    def backward(self, delta: np.ndarray) -> None:
+        """
+        Backward pass using Sigmoid. Creates gradient attribute with respect to inputs.
+
+        Parameters
+        ----------
+        delta : np.ndarray
+            Accumulated gradient obtained by backpropagation.
+
+        Returns
+        -------
+        None
+        """
+
+        self.dinputs = np.empty_like(delta) 
+
+        # 3D batch processing
+        if len(delta.shape) == 3:
+
+            for outer_index in range(len(delta)):
+
+                for index, (single_output, single_delta) in enumerate(zip(self.output[outer_index], delta[outer_index])):
+
+                    single_output = single_output.reshape(-1, 1)
+
+                    jacobian_matrix = np.diagflat(single_output) - np.dot(single_output, single_output.T)
+
+                    self.dinputs[outer_index][index] = np.dot(jacobian_matrix, single_delta) 
+
+        elif len(delta.shape) == 2:
+
+            for index, (single_output, single_delta) in enumerate(zip(self.output, delta)):
+
+                single_output = single_output.reshape(-1, 1)
+
+                jacobian_matrix = np.diagflat(single_output) - np.dot(single_output, single_output.T)
+
+                self.dinputs[index] = np.dot(jacobian_matrix, single_delta) 

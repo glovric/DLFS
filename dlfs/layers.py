@@ -1025,3 +1025,62 @@ class LSTM:
             layer.backward(self.lstm_layers[idx + 1].dinputs)
 
         self.dinputs = self.lstm_layers[0].dinputs
+
+class DropoutLayer:
+
+    def __init__(self, rate):
+        self.rate = 1 - rate
+
+    def forward(self, inputs, training):
+        self.inputs = inputs
+
+        if not training:
+            self.output = inputs.copy()
+            return
+
+        self.binary_mask = np.random.binomial(1, self.rate, size=self.inputs.shape) / self.rate
+        self.output = inputs * self.binary_mask
+
+    def backward(self, dvalues):
+        self.dinputs = dvalues * self.binary_mask
+
+class LayerNorm:
+    def __init__(self, num_features, epsilon=1e-5):
+        """
+        Initializes the LayerNorm layer.
+        
+        :param num_features: The number of features in the input (i.e., the dimension to normalize over).
+        :param epsilon: Small value to prevent division by zero when computing the standard deviation.
+        """
+        self.num_features = num_features
+        self.epsilon = epsilon
+        
+        # Initialize the scale (gamma) and shift (beta) parameters
+        self.gamma = np.ones(num_features)  # Shape: num_features
+        self.beta = np.zeros(num_features)  # Shape: (1, num_features)
+        
+    def forward(self, inputs):
+        """
+        Forward pass of LayerNorm
+        
+        :param x: Input data of shape (batch_size, num_features)
+        :return: Layer normalized output
+        """
+        mean = np.mean(inputs, axis=-1, keepdims=True)
+        variance = np.var(inputs, axis=-1, keepdims=True)
+
+        self.normalized = (inputs - mean) / np.sqrt(variance + self.epsilon)
+        self.output = self.gamma * self.normalized + self.beta
+    
+    def backward(self, delta):
+        """
+        Backward pass for LayerNorm, computing the gradients.
+        
+        :param dout: The gradient of the loss with respect to the output.
+        :return: Gradients with respect to input (dx), gamma, and beta.
+        """
+        self.dbeta = np.sum(delta, axis=(0, 1))
+        self.dgamma = np.sum(delta * self.normalized, axis=(0, 1))
+        dnorm = delta * self.gamma
+        self.dinputs = dnorm - np.mean(dnorm, axis=-1, keepdims=True) - self.normalized * np.mean(dnorm * self.normalized, axis=-1, keepdims=True)
+

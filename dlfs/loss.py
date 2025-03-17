@@ -96,3 +96,27 @@ class MSE_Loss(Loss):
         """
         # Derivative of MSE with respect to y_pred
         self.dinputs = (y_pred - y_true)
+
+class CCE_Loss(Loss):
+
+    def forward(self, y_pred, y_true):
+        samples = range(len(y_pred))
+        y_pred_clipped = np.clip(y_pred, 1e-7, 1 - 1e-7)
+
+        if len(y_true.shape) == 1:
+            correct_confidences = y_pred_clipped[samples, y_true]
+
+        elif len(y_true.shape) == 2:
+            correct_confidences = np.sum(y_pred_clipped*y_true, axis=1)
+
+        return (-np.log(correct_confidences))
+
+    def backward(self, dvalues, y_true):
+        samples = len(dvalues)
+        labels = len(dvalues[0])
+
+        if(len(y_true.shape)) == 1:
+            y_true = np.eye(labels)[y_true]
+
+        self.dinputs = -y_true / dvalues
+        self.dinputs = self.dinputs / samples  

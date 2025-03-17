@@ -1,6 +1,7 @@
 import numpy as np
 from .base import Optimizer, Layer
-from .layers import DenseLayer, ConvolutionalLayer, RecurrentLayer, LSTMLayer
+from .layers import (DenseLayer, ConvolutionalLayer, RecurrentLayer, LSTMLayer, 
+                     LayerNorm, SingleAttentionHead)
 
 class Optimizer_SGD(Optimizer):
 
@@ -529,6 +530,20 @@ class Optimizer_Adam(Optimizer):
         layer.input_weights, layer.input_weights_momentums, layer.input_weights_cache = self._update_parameters(layer.input_weights, layer.dinput_weights, layer.input_weights_momentums, layer.input_weights_cache)
         layer.input_bias, layer.input_bias_momentums, layer.input_bias_cache = self._update_parameters(layer.input_bias, layer.dinput_bias, layer.input_bias_momentums, layer.input_bias_cache)
         layer.hidden_weights, layer.hidden_weights_momentums, layer.hidden_weights_cache = self._update_parameters(layer.hidden_weights, layer.dhidden_weights, layer.hidden_weights_momentums, layer.hidden_weights_cache)
+
+    def _init_layer_norm(self, layer: LayerNorm) -> None:
+        layer_norm_params = (layer.gamma, layer.beta)
+        layer.gamma_cache, layer.beta_cache = self._init_parameters(layer_norm_params)
+        layer.gamma_momentums, layer.beta_momentums = self._init_parameters(layer_norm_params)
+
+    def _update_layer_norm(self, layer: LayerNorm) -> None:
+        gamma_params = (layer.gamma, layer.dgamma, layer.gamma_mommentums, layer.gamma_cache)
+        beta_params = (layer.beta, layer.dbeta, layer.beta_mommentums, layer.beta_cache)
+        layer.gamma, layer.gamma_mommentums, layer.gamma_cache = self._update_parameters(*gamma_params)
+        layer.beta, layer.beta_mommentums, layer.beta_cache = self._update_parameters(*beta_params)
+
+    def _init_single_attention_head(self, layer: SingleAttentionHead) -> None:
+        pass
 
     def pre_update_parameters(self) -> None:
         """

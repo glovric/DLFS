@@ -10,6 +10,17 @@ class Layer:
     def backward(self, delta: np.ndarray) -> None:
         pass
 
+    def get_parameters(self):
+        pass
+
+    def _filter_parameters(self, param_names):
+        parameters = {}
+        for attr_name, attr_value in vars(self).items():
+            if isinstance(attr_value, np.ndarray):
+                if attr_name in param_names:
+                    parameters[attr_name] = attr_value
+        return parameters
+
 class Activation:
     """
     Activation function abstract base class.

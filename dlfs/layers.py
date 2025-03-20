@@ -80,6 +80,10 @@ class DenseLayer(Layer):
                 self.dbiases += np.sum(delta[i], axis=0)
                 self.dinputs += np.dot(delta[i], self.weights.T)
 
+    def get_parameters(self):
+        param_names = ["weights", "biases"]
+        return super()._filter_parameters(param_names)
+
 class ConvolutionalLayer(Layer):
 
     def __init__(self, input_shape: tuple, output_channels: int, kernel_size: int, stride: int = 1, padding: int = 0) -> None:
@@ -1085,6 +1089,10 @@ class LayerNorm(Layer):
         dnorm = delta * self.gamma
         self.dinputs = dnorm - np.mean(dnorm, axis=-1, keepdims=True) - self.normalized * np.mean(dnorm * self.normalized, axis=-1, keepdims=True)
 
+    def get_parameters(self):
+        param_names = ["gamma", "beta"]
+        return super()._filter_parameters(param_names)
+
 class SingleAttentionHead():
 
     def __init__(self, n_embed, head_size, block_size, dropout=0.1):
@@ -1273,14 +1281,20 @@ class EmbeddingLayer(Layer):
 
     def backward(self, delta):
 
-        self.dembedding = []
+        self.dembeddings = np.zeros_like(self.embeddings)
 
-        for i, idx in enumerate(self.input_indices):
-            # The gradient w.r.t. the embedding is simply the gradient w.r.t. the output
-            # (d_output[i]) because of the identity mapping in the embedding lookup
-            self.dembedding.append(delta[i])
+        batch_size, sequence_length, embedding_dim = delta.shape
+        
+        # Flatten the batch and sequence dimensions to get the word indices as a 1D array
+        batch_sequence_flat = np.reshape(self.input_indices, -1)  # Shape: (batch_size * sequence_length,)
+        delta_flat = np.reshape(delta, (-1, embedding_dim))  # Shape: (batch_size * sequence_length, embedding_dim)
 
-        self.dembedding = np.array(self.dembedding)
+        for idx, grad in zip(batch_sequence_flat, delta_flat):
+            self.dembeddings[idx] += grad
+
+    def get_parameters(self):
+        param_names = ["embeddings"]
+        return super()._filter_parameters(param_names)
 
 class PositionalEncoding(Layer):
 

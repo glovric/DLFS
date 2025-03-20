@@ -99,7 +99,7 @@ class MSE_Loss(Loss):
 
 class CCE_Loss(Loss):
 
-    def forward(self, y_pred, y_true):
+    def calculate(self, y_pred, y_true):
         samples = range(len(y_pred))
         y_pred_clipped = np.clip(y_pred, 1e-7, 1 - 1e-7)
 

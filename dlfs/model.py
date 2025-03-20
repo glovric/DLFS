@@ -27,7 +27,7 @@ class Model:
         self.loss_function = loss_function
         self.optimizer = optimizer
 
-    def _forward(self, X: np.ndarray, training) -> None:
+    def _forward(self, X: np.ndarray, tgt: np.ndarray = None, training: bool = False) -> None:
         """
         Forward pass.
 
@@ -46,7 +46,7 @@ class Model:
 
         # Forward data through all the layers
         for idx, layer in enumerate(self.layers[1:], start=1):
-                layer.forward(self.layers[idx - 1].output, training)
+            layer.forward(self.layers[idx - 1].output, training)
 
         # Output of the model is the output of the last layer
         self.output = self.layers[-1].output
@@ -141,7 +141,9 @@ class Model:
             if batch_size is None:
 
                 # Forward pass
-                self._forward(X)
+                self._forward(X, training=True)
+
+                print(f'output: {self.output.shape}, y: {y.shape}')
 
                 # Backward pass
                 self._backward(y)
@@ -178,7 +180,7 @@ class Model:
                     if not i % print_every:
                         print(f'===== EPOCH : {i} ===== LOSS : {batch_loss:.5f} =====')
 
-    def predict(self, X: np.ndarray, training) -> np.ndarray:
+    def predict(self, X: np.ndarray) -> np.ndarray:
         """
         Predict using the model.
 
@@ -191,7 +193,7 @@ class Model:
         -------
         prediction : np.ndarray
         """
-        self._forward(X, training)
+        self._forward(X, training=False)
         return self.output
     
     def add(self, layer : Layer | Activation) -> None:

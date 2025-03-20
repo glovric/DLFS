@@ -324,7 +324,7 @@ class Optimizer_Adam(Optimizer):
         self.beta_2 = beta_2
         self.iterations = 0 
 
-    def _init_parameters(self, params: tuple) -> list:
+    def _init_parameters(self, layer: Layer) -> None:
         """
         Helper method for initializing Adam parameters of a layer (momentums or cache).
 
@@ -338,9 +338,24 @@ class Optimizer_Adam(Optimizer):
         adam_params : list
             List of zero-valued momentums or cache arrays.
         """
-        return [np.zeros_like(param) for param in params]
+        params = layer.get_parameters()
+        for p in params:
+            setattr(layer, f"{p}_cache", np.zeros_like(params[p]))
+            setattr(layer, f"{p}_momentums", np.zeros_like(params[p]))
+
+    def _update_parameters(self, layer: Layer) -> None:
+        params = layer.get_parameters()
+
+        for param_name, param_value in params.items():
+            gradient = getattr(layer, "d" + param_name)
+            cache = getattr(layer, param_name + "_cache")
+            momentums = getattr(layer, param_name + "_momentums")
+            new_params, new_momentums, new_cache = self._update_adam_parameters(params=param_value, gradients=gradient, momentums=momentums, cache=cache)
+            setattr(layer, param_name, new_params)
+            setattr(layer, param_name + "_momentums", new_momentums)
+            setattr(layer, param_name + "_cache", new_cache)
     
-    def _update_parameters(self, params: np.ndarray, gradients: np.ndarray, momentums: np.ndarray, cache: np.ndarray) -> tuple:
+    def _update_adam_parameters(self, params: np.ndarray, gradients: np.ndarray, momentums: np.ndarray, cache: np.ndarray) -> tuple:
         """
         Helper method for updating Adam parameters of a layer (momentums and caches).
 
@@ -371,179 +386,6 @@ class Optimizer_Adam(Optimizer):
 
         parameter_update = -self.current_learning_rate * momentums_corrected / (np.sqrt(cache_corrected) + self.epsilon)
         return params + parameter_update, new_momentums, new_cache
-        
-    def _init_lstm(self, layer: LSTMLayer) -> None:
-        """
-        Helper method for initializing LSTMLayer momentums and caches.
-
-        Parameters
-        ----------
-        layer : LSTMLayer
-            LSTM layer to initialize.
-
-        Returns
-        -------
-        None
-        """
-
-        lstm_parms = (layer.input_weights, layer.input_bias, 
-                      layer.forget_weights, layer.forget_bias, 
-                      layer.candidate_weights, layer.candidate_bias, 
-                      layer.output_weights, layer.output_bias)
-
-        (layer.input_weights_cache, layer.input_bias_cache,
-        layer.forget_weights_cache, layer.forget_bias_cache,
-        layer.candidate_weights_cache, layer.candidate_bias_cache,
-        layer.output_weights_cache, layer.output_bias_cache) = self._init_parameters(lstm_parms)
-         
-        (layer.input_weights_momentums, layer.input_bias_momentums, 
-        layer.forget_weights_momentums, layer.forget_bias_momentums, 
-        layer.candidate_weights_momentums, layer.candidate_bias_momentums, 
-        layer.output_weights_momentums, layer.output_bias_momentums) = self._init_parameters(lstm_parms)
-
-    def _update_lstm(self, layer: LSTMLayer) -> None:
-        """
-        Helper method for updating LSTMLayer parameters, momentums and caches.
-
-        Parameters
-        ----------
-        layer : LSTMLayer
-            LSTM layer to update.
-
-        Returns
-        -------
-        None
-        """
-
-        # Input weights
-        layer.input_weights, layer.input_weights_momentums, layer.input_weights_cache = self._update_parameters(layer.input_weights, layer.dinput_weights, layer.input_weights_momentums, layer.input_weights_cache)
-        layer.input_bias, layer.input_bias_momentums, layer.input_bias_cache = self._update_parameters(layer.input_bias, layer.dinput_bias, layer.input_bias_momentums, layer.input_bias_cache)
-
-        # Forget weights
-        layer.forget_weights, layer.forget_weights_momentums, layer.forget_weights_cache = self._update_parameters(layer.forget_weights, layer.dforget_weights, layer.forget_weights_momentums, layer.forget_weights_cache)
-        layer.forget_bias, layer.forget_bias_momentums, layer.forget_bias_cache = self._update_parameters(layer.forget_bias, layer.dforget_bias, layer.forget_bias_momentums, layer.forget_bias_cache)
-
-        # Candidate weights
-        layer.candidate_weights, layer.candidate_weights_momentums, layer.candidate_weights_cache = self._update_parameters(layer.candidate_weights, layer.dcandidate_weights, layer.candidate_weights_momentums, layer.candidate_weights_cache)
-        layer.candidate_bias, layer.candidate_bias_momentums, layer.candidate_bias_cache = self._update_parameters(layer.candidate_bias, layer.dcandidate_bias, layer.candidate_bias_momentums, layer.candidate_bias_cache)
-
-        # Output weights
-        layer.output_weights, layer.output_weights_momentums, layer.output_weights_cache = self._update_parameters(layer.output_weights, layer.doutput_weights, layer.output_weights_momentums, layer.output_weights_cache)
-        layer.output_bias, layer.output_bias_momentums, layer.output_bias_cache = self._update_parameters(layer.output_bias, layer.doutput_bias, layer.output_bias_momentums, layer.output_bias_cache)
-
-    def _init_dense(self, layer: DenseLayer) -> None:
-        """
-        Helper method for initializing DenseLayer momentums and caches.
-
-        Parameters
-        ----------
-        layer : DenseLayer
-            Dense layer to initialize.
-
-        Returns
-        -------
-        None
-        """
-        dense_parms = (layer.weights, layer.biases)
-        layer.weights_cache, layer.bias_cache = self._init_parameters(dense_parms)
-        layer.weights_momentums, layer.bias_momentums = self._init_parameters(dense_parms)
-
-    def _update_dense(self, layer: DenseLayer) -> None:
-        """
-        Helper method for updating DenseLayer parameters, momentums and caches.
-
-        Parameters
-        ----------
-        layer : DenseLayer
-            Dense layer to update.
-
-        Returns
-        -------
-        None
-        """
-        layer.weights, layer.weights_momentums, layer.weights_cache = self._update_parameters(layer.weights, layer.dweights, layer.weights_momentums, layer.weights_cache)
-        layer.biases, layer.bias_momentums, layer.bias_cache = self._update_parameters(layer.biases, layer.dbiases, layer.bias_momentums, layer.bias_cache)
-
-    def _init_conv(self, layer: ConvolutionalLayer) -> None:
-        """
-        Helper method for initializing ConvolutionalLayer momentums and caches.
-
-        Parameters
-        ----------
-        layer : ConvolutionalLayer
-            Convolutional layer to initialize.
-
-        Returns
-        -------
-        None
-        """
-        conv_params = (layer.kernels, layer.biases)
-        layer.kernel_cache, layer.bias_cache = self._init_parameters(conv_params)
-        layer.kernel_momentums, layer.bias_momentums = self._init_parameters(conv_params)
-
-    def _update_conv(self, layer: ConvolutionalLayer) -> None:
-        """
-        Helper method for updating ConvolutionalLayer parameters, momentums and caches.
-
-        Parameters
-        ----------
-        layer : ConvolutionalLayer
-            Convolutional layer to update.
-
-        Returns
-        -------
-        None
-        """
-        layer.kernels, layer.kernel_momentums, layer.kernel_cache = self._update_parameters(layer.kernels, layer.dkernels, layer.kernel_momentums, layer.kernel_cache)
-        layer.biases, layer.bias_momentums, layer.bias_cache = self._update_parameters(layer.biases, layer.dbiases, layer.bias_momentums, layer.bias_cache)
-
-    def _init_recurrent(self, layer: RecurrentLayer) -> None:
-        """
-        Helper method for initializing RecurrentLayer momentums and caches.
-
-        Parameters
-        ----------
-        layer : RecurrentLayer
-            Recurrent layer to initialize.
-
-        Returns
-        -------
-        None
-        """
-        recurrent_params = (layer.input_weights, layer.input_bias, layer.hidden_weights)
-        layer.input_weights_cache, layer.input_bias_cache, layer.hidden_weights_cache = self._init_parameters(recurrent_params)
-        layer.input_weights_momentums, layer.input_bias_momentums, layer.hidden_weights_momentums = self._init_parameters(recurrent_params)
-
-    def _update_recurrent(self, layer: RecurrentLayer) -> None:
-        """
-        Helper method for updating ConvolutionalLayer parameters, momentums and caches.
-
-        Parameters
-        ----------
-        layer : ConvolutionalLayer
-            Convolutional layer to update.
-
-        Returns
-        -------
-        None
-        """
-        layer.input_weights, layer.input_weights_momentums, layer.input_weights_cache = self._update_parameters(layer.input_weights, layer.dinput_weights, layer.input_weights_momentums, layer.input_weights_cache)
-        layer.input_bias, layer.input_bias_momentums, layer.input_bias_cache = self._update_parameters(layer.input_bias, layer.dinput_bias, layer.input_bias_momentums, layer.input_bias_cache)
-        layer.hidden_weights, layer.hidden_weights_momentums, layer.hidden_weights_cache = self._update_parameters(layer.hidden_weights, layer.dhidden_weights, layer.hidden_weights_momentums, layer.hidden_weights_cache)
-
-    def _init_layer_norm(self, layer: LayerNorm) -> None:
-        layer_norm_params = (layer.gamma, layer.beta)
-        layer.gamma_cache, layer.beta_cache = self._init_parameters(layer_norm_params)
-        layer.gamma_momentums, layer.beta_momentums = self._init_parameters(layer_norm_params)
-
-    def _update_layer_norm(self, layer: LayerNorm) -> None:
-        gamma_params = (layer.gamma, layer.dgamma, layer.gamma_mommentums, layer.gamma_cache)
-        beta_params = (layer.beta, layer.dbeta, layer.beta_mommentums, layer.beta_cache)
-        layer.gamma, layer.gamma_mommentums, layer.gamma_cache = self._update_parameters(*gamma_params)
-        layer.beta, layer.beta_mommentums, layer.beta_cache = self._update_parameters(*beta_params)
-
-    def _init_single_attention_head(self, layer: SingleAttentionHead) -> None:
-        pass
 
     def pre_update_parameters(self) -> None:
         """
@@ -570,34 +412,14 @@ class Optimizer_Adam(Optimizer):
         -------
         None
         """
-        
-        if isinstance(layer, LSTMLayer):
 
-            if not hasattr(layer, 'input_weights_cache'):
-                self._init_lstm(layer)
+        params = layer.get_parameters()
+        param_name = params.keys()[0] 
 
-            self._update_lstm(layer)
-    
-        elif isinstance(layer, DenseLayer):
+        if not hasattr(layer, param_name + "_cache"):
+            self._init_parameters(layer)
 
-            if not hasattr(layer, 'weights_cache'):
-                self._init_dense(layer)
-
-            self._update_dense(layer)
-
-        elif isinstance(layer, ConvolutionalLayer):
-
-            if not hasattr(layer, 'kernel_cache'):
-                self._init_conv(layer)
-
-            self._update_conv(layer)
-
-        elif isinstance(layer, RecurrentLayer):
-            
-            if not hasattr(layer, 'input_weights_cache'):
-                self._init_recurrent(layer)
-
-            self._update_recurrent(layer)
+        self._update_parameters(layer)
 
     def post_update_parameters(self) -> None:
         """

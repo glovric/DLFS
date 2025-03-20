@@ -130,7 +130,7 @@ class Softmax(Activation):
         """
         pass
 
-    def forward(self, inputs: np.ndarray) -> None:
+    def forward(self, inputs: np.ndarray, training=False) -> None:
         """
         Forward pass using Softmax. Creates output attribute.
 

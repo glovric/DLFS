@@ -143,8 +143,6 @@ class Model:
                 # Forward pass
                 self._forward(X, training=True)
 
-                print(f'output: {self.output.shape}, y: {y.shape}')
-
                 # Backward pass
                 self._backward(y)
 

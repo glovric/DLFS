@@ -211,6 +211,10 @@ class ConvolutionalLayer(Layer):
                     self.dkernels[j, k] += dkernels
                     self.dinputs[i, k] += dinputs
 
+    def get_parameters(self):
+        param_names = ["kernels", "biases"]
+        return super()._filter_parameters(param_names)
+
     def _calculate_kernel_gradient(self, inputs: np.ndarray, delta: np.ndarray, kernel: np.ndarray, stride: int = 1) -> np.ndarray:
         """
         Helper method for calculating kernel gradient.
@@ -343,7 +347,7 @@ class MaxPoolLayer(Layer):
         # Create output shape
         self.output_shape = (self.input_channels, self.output_height, self.output_width)
 
-    def forward(self, inputs: np.ndarray) -> None:
+    def forward(self, inputs: np.ndarray, training=False) -> None:
         """
         Forward pass using the maxpool layer. Creates output attribute.
 
@@ -475,7 +479,7 @@ class ReshapeLayer(Layer):
         self.input_shape = input_shape
         self.output_shape = output_shape
 
-    def forward(self, inputs: np.ndarray) -> None:
+    def forward(self, inputs: np.ndarray, training=False) -> None:
         """
         Reshapes input array to output shape. Creates output attribute.
 
@@ -546,7 +550,7 @@ class RecurrentLayer(Layer):
         self.hidden_weights = np.random.uniform(-k, k, (n_hidden, n_hidden))
         self.input_bias = np.random.uniform(-k, k, (n_hidden))
       
-    def forward(self, inputs: np.ndarray) -> None:
+    def forward(self, inputs: np.ndarray, training=False) -> None:
         """
         Forward pass using the recurrent layer. Creates hidden states and output attributes.
 
@@ -635,6 +639,10 @@ class RecurrentLayer(Layer):
 
             self.dinputs[:, t, :] += np.dot(self.input_weights, hidden_gradient.T).T
 
+    def get_parameters(self):
+        param_names = ["input_weights", "hidden_weights", "input_bias"]
+        return super()._filter_parameters(param_names)
+
 class RNN:
 
     def __init__(self, n_inputs: int, n_hidden: int, n_layers: int = 1, predict_sequence: bool = False) -> None:
@@ -674,7 +682,7 @@ class RNN:
                 for i in range(n_layers - 1):
                     self.recurrent_layers.append(RecurrentLayer(n_hidden, n_hidden))
 
-    def forward(self, inputs: np.ndarray) -> None:
+    def forward(self, inputs: np.ndarray, training=False) -> None:
         """
         Forward pass using the RNN. Creates output attribute.
 
@@ -692,7 +700,7 @@ class RNN:
 
         # Forward hidden states of the previous recurrent layer to the current one
         for idx, layer in enumerate(self.recurrent_layers[1:], start=1):
-            layer.forward(self.recurrent_layers[idx - 1].hidden_states)
+            layer.forward(self.recurrent_layers[idx - 1].hidden_states, training)
 
         # Output of the RNN is the final recurrent layer's output
         self.output = self.recurrent_layers[-1].output.copy()
@@ -781,7 +789,7 @@ class LSTMLayer(Layer):
         self.output_weights = np.random.uniform(-k, k, (n_inputs + n_hidden, n_hidden))
         self.output_bias = np.random.uniform(-k, k, (n_hidden)) 
              
-    def forward(self, inputs: np.ndarray) -> None:
+    def forward(self, inputs: np.ndarray, training=False) -> None:
         """
         Forward pass using the LSTM layer. 
         Creates hidden, candidate, cell, forget, input, output states and output attributes.
@@ -931,6 +939,11 @@ class LSTMLayer(Layer):
                                     np.dot(forget_grad, self.forget_weights[:self.n_inputs, :].T) + \
                                     np.dot(candidate_grad, self.candidate_weights[:self.n_inputs, :].T)
    
+    def get_parameters(self):
+        param_names = ["input_weights", "forget_weights", "candidate_weights", "output_weights",
+                       "input_bias", "forget_bias", "candidate_bias", "output_bias"]
+        return super()._filter_parameters(param_names)
+
     def _sigmoid(self, x: np.ndarray) -> np.ndarray:
         """
         Sigmoid activation function.
@@ -986,7 +999,7 @@ class LSTM:
                 for i in range(n_layers - 1):
                     self.lstm_layers.append(LSTMLayer(n_hidden, n_hidden))
 
-    def forward(self, inputs: np.ndarray) -> None:
+    def forward(self, inputs: np.ndarray, training=False) -> None:
         """
         Forward pass using the LSTM. Creates output attribute.
 
@@ -1004,7 +1017,7 @@ class LSTM:
 
         # Forward hidden states of the previous LSTM layer to the current one
         for idx, layer in enumerate(self.lstm_layers[1:], start=1):
-            layer.forward(self.lstm_layers[idx - 1].hidden_states)
+            layer.forward(self.lstm_layers[idx - 1].hidden_states, training)
 
         # Output of the LSTM is the final LSTM layer's output
         self.output = self.lstm_layers[-1].output.copy()

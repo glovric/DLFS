@@ -9,7 +9,7 @@ class Linear(Activation):
         """
         pass
 
-    def forward(self, inputs: np.ndarray) -> None:
+    def forward(self, inputs: np.ndarray, training = False) -> None:
         """
         Forward pass using Linear activation. Creates output attribute.
 
@@ -49,7 +49,7 @@ class ReLU(Activation):
         """
         pass
 
-    def forward(self, inputs: np.ndarray) -> None:
+    def forward(self, inputs: np.ndarray, training = False) -> None:
         """
         Forward pass using ReLU. Creates output attribute.
 
@@ -91,7 +91,7 @@ class Sigmoid(Activation):
         """
         pass
 
-    def forward(self, inputs: np.ndarray) -> None:
+    def forward(self, inputs: np.ndarray, training = False) -> None:
         """
         Forward pass using Sigmoid. Creates output attribute.
 

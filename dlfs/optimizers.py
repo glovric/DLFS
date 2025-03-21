@@ -414,7 +414,9 @@ class Optimizer_Adam(Optimizer):
         """
 
         params = layer.get_parameters()
-        param_name = params.keys()[0] 
+        if params is None:
+            return
+        param_name = list(params.keys())[0] 
 
         if not hasattr(layer, param_name + "_cache"):
             self._init_parameters(layer)

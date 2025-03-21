@@ -88,25 +88,7 @@ class Model:
         # Loop through all layers
         for layer in self.layers:
 
-            # If the current layer is an instance of a layer subclass it can be updated
-            if isinstance(layer, Layer):
-                self.optimizer.update_layer_parameters(layer)
-
-            # If the current layer is an instance of an RNN class, its recurrent layers can be updated
-            elif isinstance(layer, RNN):
-                for recurrent_layer in layer.recurrent_layers:
-                    self.optimizer.update_layer_parameters(recurrent_layer)
-
-            # If the current layer is an instance of an LSTM class, its LSTM layers can be updated
-            elif isinstance(layer, LSTM):
-                for lstm_layer in layer.lstm_layers:
-                    self.optimizer.update_layer_parameters(lstm_layer)
-
-            # If the current layer has layer attributes of its own, they can be updated
-            elif hasattr(layer, 'layers'):
-                for layer in layer.layers:
-                    if isinstance(layer, Layer):
-                        self.optimizer.update_layer_parameters(layer)
+            self.optimizer.update_layer_parameters(layer)
 
         self.optimizer.post_update_parameters()
 

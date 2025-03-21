@@ -413,15 +413,24 @@ class Optimizer_Adam(Optimizer):
         None
         """
 
-        params = layer.get_parameters()
-        if params is None:
-            return
-        param_name = list(params.keys())[0] 
+        if isinstance(layer, Layer):
+            params = layer.get_parameters()
+            if params is None:
+                return
+            param_name = list(params.keys())[0] 
 
-        if not hasattr(layer, param_name + "_cache"):
-            self._init_parameters(layer)
+            if not hasattr(layer, param_name + "_cache"):
+                self._init_parameters(layer)
 
-        self._update_parameters(layer)
+            self._update_parameters(layer)
+
+        elif isinstance(layer, list):
+            for l in layer:
+                self.update_layer_parameters(l)
+
+        elif hasattr(layer, "__dict__"):
+            for attr_name, attr in vars(layer).items():
+                self.update_layer_parameters(attr)
 
     def post_update_parameters(self) -> None:
         """
@@ -432,3 +441,16 @@ class Optimizer_Adam(Optimizer):
         None
         """
         self.iterations += 1
+
+    def recursive_search(self, layer):
+
+        if isinstance(layer, Layer):
+            self.update_layer_parameters(layer)
+
+        elif isinstance(layer, list):
+            for l in layer:
+                self.recursive_search(l)
+
+        elif hasattr(layer, "__dict__"):
+            for attr_name, attr in vars(layer).items():
+                self.recursive_search(attr)

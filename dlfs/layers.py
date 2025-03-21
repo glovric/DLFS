@@ -1219,7 +1219,7 @@ class MultiHeadAttention():
 
         self.dinputs = self.attention_heads[0].dinputs
 
-class FeedForward(Layer):
+class FeedForward:
 
     def __init__(self, n_embed, dropout=0.1):
         self.fc1 = DenseLayer(n_embed, 4*n_embed)
@@ -1244,7 +1244,7 @@ class FeedForward(Layer):
         self.fc1.backward(self.relu1.dinputs)
         self.dinputs = self.fc1.dinputs
 
-class Block(Layer):
+class Block:
     def __init__(self, n_embed, n_head, block_size, dropout=0.1):
         head_size = n_embed // n_head
         self.sa = MultiHeadAttention(n_heads=n_head, head_size=head_size, n_embed=n_embed, block_size=block_size, dropout=dropout)
@@ -1325,6 +1325,7 @@ class PositionalEncoding(Layer):
         return P
 
     def forward(self, inputs, training=False):
+        self.sequence_length = inputs.shape[1]
         self.output = inputs + self._positional_encode()
 
     def backward(self, delta):

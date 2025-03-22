@@ -1,10 +1,4 @@
-from .config import USE_CUPY
-
-if USE_CUPY:
-    import cupy as np
-else:
-    import numpy as np
-
+import numpy as np
 from .base import Activation
 
 class Linear(Activation):

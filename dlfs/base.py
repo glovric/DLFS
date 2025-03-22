@@ -10,10 +10,10 @@ class Layer:
     def backward(self, delta: np.ndarray) -> None:
         pass
 
-    def get_parameters(self):
+    def get_parameters(self) -> dict:
         pass
 
-    def _filter_parameters(self, param_names):
+    def _filter_parameters(self, param_names: list[str]) -> dict:
         parameters = {}
         for attr_name, attr_value in vars(self).items():
             if isinstance(attr_value, np.ndarray):

@@ -30,22 +30,62 @@ class Optimizer_SGD(Optimizer):
         self.iterations = 0
 
     def _update_sgd_parameters(self, params: np.ndarray, gradients: np.ndarray, momentums: np.ndarray = None) -> tuple:
+        """
+        Helper method for calculating new parameters of a layer. Uses momentums if provided.
+
+        Parameters
+        ----------
+        params : np.ndarray
+            Layer parameter to be updated.
+
+        gradients : np.ndarray
+            Layer gradient used to update the parameter.
+
+        momentums : np.ndarray, default=None
+            Momentum used for better performance of the algorithm.
+
+        Returns
+        -------
+        update_params, updated_momentums : tuple[np.ndarray, np.ndarray]
+        """
         if momentums is not None:
+            # Calculate new parameters using momentums
             new_momentums = self.momentum * momentums - self.current_learning_rate * gradients
             return params + new_momentums, new_momentums
         else:
+            # Calculate new parameters using vanilla SGD
             update = -self.current_learning_rate * gradients
             return params + update, None
         
     def _update_parameters(self, layer: Layer) -> None:
+        """
+        Helper method for updating parameters of a layer.
+
+        Parameters
+        ----------
+        layer: Layer
+            Layer to be updated.
+
+        Returns
+        -------
+        None
+        """
         params = layer.get_parameters()
 
+        # Loop through parameters of a layer
         for param_name, param_value in params.items():
+
+            # Get the gradient attribute and momentums attributes from the layer
             gradient = getattr(layer, "d" + param_name)
             momentums = getattr(layer, param_name + "_momentums", None)
+
+            # Calculate new parameters and new momentums
             new_params, new_momentums = self._update_sgd_parameters(params=param_value, gradients=gradient, momentums=momentums)
+
+            # Set new parameters attribute to layer
             setattr(layer, param_name, new_params)
             if new_momentums is not None:
+                # Set new momentums attribute to layer
                 setattr(layer, param_name + "_momentums", new_momentums)
         
     def _init_parameters(self, layer: Layer) -> None:
@@ -54,16 +94,16 @@ class Optimizer_SGD(Optimizer):
 
         Parameters
         ----------
-        params : tuple
-            Tuple of layer parameters.
+        layer : Layer
+            Layer to be initialized.
 
         Returns
         -------
-        adam_params : list
-            List of zero-valued momentums or cache arrays.
+        None
         """
         params = layer.get_parameters()
         for p in params:
+            # Create empty momentums array for every parameter 
             setattr(layer, f"{p}_momentums", np.zeros_like(params[p]))
     
     def pre_update_parameters(self) -> None:
@@ -80,7 +120,7 @@ class Optimizer_SGD(Optimizer):
 
     def update_layer_parameters(self, layer: Layer) -> None:
         """
-        Method for updating layer parameters.
+        Method for updating layer parameters recursively.
 
         Parameters
         ----------
@@ -92,26 +132,38 @@ class Optimizer_SGD(Optimizer):
         None
         """
 
+        # Base case: if layer object is a Layer instance it can be updated
         if isinstance(layer, Layer):
             params = layer.get_parameters()
             if params is None:
                 return
             param_name = list(params.keys())[0] 
 
+            # Check if momentums are initialized and should they be initialized
             if not hasattr(layer, param_name + "_momentums") and self.momentum:
                 self._init_parameters(layer)
 
+            # Update layer parameters
             self._update_parameters(layer)
 
+        # Case 2: if layer object is a list perform recursive update for every element of the list
         elif isinstance(layer, list):
             for l in layer:
                 self.update_layer_parameters(l)
 
+        # Case 3: if layer object has its own class attributes perform recursive update for every class attribute
         elif hasattr(layer, "__dict__"):
             for attr_name, attr in vars(layer).items():
                 self.update_layer_parameters(attr)
 
     def post_update_parameters(self) -> None:
+        """
+        Method for updating number of iterations.
+
+        Returns
+        -------
+        None
+        """
         self.iterations += 1
 
 class Optimizer_Adam(Optimizer):
@@ -156,34 +208,54 @@ class Optimizer_Adam(Optimizer):
 
         Parameters
         ----------
-        params : tuple
-            Tuple of layer parameters.
+        layer : Layer
+            Layer to be initialized.
 
         Returns
         -------
-        adam_params : list
-            List of zero-valued momentums or cache arrays.
+        None
         """
         params = layer.get_parameters()
         for p in params:
+            # Create empty momentums and cache arrays for every parameter 
             setattr(layer, f"{p}_cache", np.zeros_like(params[p]))
             setattr(layer, f"{p}_momentums", np.zeros_like(params[p]))
 
     def _update_parameters(self, layer: Layer) -> None:
+        """
+        Helper method for updating parameters of a layer.
+
+        Parameters
+        ----------
+        layer: Layer
+            Layer to be updated.
+
+        Returns
+        -------
+        None
+        """
         params = layer.get_parameters()
 
+        # Loop through parameters of a layer
+
         for param_name, param_value in params.items():
+
+            # Get gradient, cache and momentums attributes from the layer
             gradient = getattr(layer, "d" + param_name)
             cache = getattr(layer, param_name + "_cache")
             momentums = getattr(layer, param_name + "_momentums")
+
+            # Calculate new parameters, new cache and  new momentums
             new_params, new_momentums, new_cache = self._update_adam_parameters(params=param_value, gradients=gradient, momentums=momentums, cache=cache)
+
+            # Set new parameters, new cache and new momentums attributes to layer
             setattr(layer, param_name, new_params)
             setattr(layer, param_name + "_momentums", new_momentums)
             setattr(layer, param_name + "_cache", new_cache)
     
     def _update_adam_parameters(self, params: np.ndarray, gradients: np.ndarray, momentums: np.ndarray, cache: np.ndarray) -> tuple:
         """
-        Helper method for updating Adam parameters of a layer (momentums and caches).
+        Helper method for calculating new Adam parameters of a layer (momentums and caches).
 
         Parameters
         ----------

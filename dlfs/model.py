@@ -1,5 +1,12 @@
+from .config import USE_CUPY
+
+if USE_CUPY:
+    import cupy as np
+else:
+    import numpy as np
+
 from typing import Union
-import numpy as np
+#import numpy as np
 from .base import Layer, Activation, Loss, Optimizer
 from .layers import RNN, LSTM
 

@@ -53,3 +53,25 @@ class Optimizer:
 
     def post_update_parameters(self) -> None:
         pass
+
+class Module:
+    """
+    Module abstract base class.
+    """
+
+    def forward(self, inputs: np.ndarray) -> None:
+        pass
+
+    def backward(self, delta: np.ndarray) -> None:
+        pass
+
+class Model:
+    """
+    Model abstract base class.
+    """
+
+    def forward(self, inputs: np.ndarray) -> None:
+        pass
+
+    def backward(self, delta: np.ndarray) -> None:
+        pass

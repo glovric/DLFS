@@ -1,5 +1,5 @@
 import numpy as np
-from .base import Optimizer, Layer
+from .base import Optimizer, Layer, Module
 
 class Optimizer_SGD(Optimizer):
 
@@ -152,8 +152,8 @@ class Optimizer_SGD(Optimizer):
                 self.update_layer_parameters(l)
 
         # Case 3: if layer object has its own class attributes perform recursive update for every class attribute
-        elif hasattr(layer, "__dict__"):
-            for attr_name, attr in vars(layer).items():
+        elif isinstance(layer, Module):
+            for _, attr in vars(layer).items():
                 self.update_layer_parameters(attr)
 
     def post_update_parameters(self) -> None:
@@ -326,8 +326,8 @@ class Optimizer_Adam(Optimizer):
             for l in layer:
                 self.update_layer_parameters(l)
 
-        elif hasattr(layer, "__dict__"):
-            for attr_name, attr in vars(layer).items():
+        elif isinstance(layer, Module):
+            for _, attr in vars(layer).items():
                 self.update_layer_parameters(attr)
 
     def post_update_parameters(self) -> None:

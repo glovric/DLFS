@@ -1,9 +1,8 @@
 from typing import Union
 import numpy as np
-from .base import Layer, Activation, Loss, Optimizer
-from .layers import RNN, LSTM
+from .base import Layer, Activation, Loss, Optimizer, Model
 
-class Model:
+class SequentialModel(Model):
 
     def __init__(self, layers: list[Union[Layer, Activation]] = None, loss_function: Loss = None, optimizer: Optimizer = None) -> None:
         """
@@ -27,7 +26,7 @@ class Model:
         self.loss_function = loss_function
         self.optimizer = optimizer
 
-    def _forward(self, X: np.ndarray, tgt: np.ndarray = None, training: bool = False) -> None:
+    def forward(self, X: np.ndarray, training: bool = False) -> None:
         """
         Forward pass.
 
@@ -51,7 +50,7 @@ class Model:
         # Output of the model is the output of the last layer
         self.output = self.layers[-1].output
 
-    def _backward(self, y: np.ndarray) -> None:
+    def backward(self, y: np.ndarray) -> None:
         """
         Backward pass.
         
@@ -123,10 +122,10 @@ class Model:
             if batch_size is None:
 
                 # Forward pass
-                self._forward(X, training=True)
+                self.forward(X, training=True)
 
                 # Backward pass
-                self._backward(y)
+                self.backward(y)
 
                 # Update parameters
                 self._update_model_parameters()
@@ -146,12 +145,12 @@ class Model:
                     batch_y = y[j:j+batch_size]
 
                     # Forward pass
-                    self._forward(batch_X)
+                    self.forward(batch_X)
 
                     batch_loss += self.loss_function.calculate(self.output, batch_y)
 
                     # Backward pass
-                    self._backward(batch_y)
+                    self.backward(batch_y)
 
                     # Update parameters
                     self._update_model_parameters()
@@ -173,7 +172,7 @@ class Model:
         -------
         prediction : np.ndarray
         """
-        self._forward(X, training=False)
+        self.forward(X, training=False)
         return self.output
     
     def add(self, layer : Layer | Activation) -> None:

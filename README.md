@@ -33,6 +33,13 @@ Architectures currently implemented:
     pip install -r requirements.txt
     ```
 
+3. **Register virtual environment as an available kernel** (optional, for running notebooks):
+
+    ```bash
+    pip install ipykernel
+    python -m ipykernel install --user
+    ```
+
 ## Side notes
 
 The dlfs library, classes and methods are written in [Sentdex](https://github.com/Sentdex) style according to the book [Neural Networks from Scratch](https://nnfs.io/). This book however covers only the basics, which is why I would recommend this book to anyone seeking out to understand the basics of neural networks.

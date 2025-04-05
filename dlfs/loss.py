@@ -109,7 +109,7 @@ class CCE_Loss(Loss):
         elif len(y_true.shape) == 2:
             correct_confidences = np.sum(y_pred_clipped*y_true, axis=1)
 
-        return (-np.log(correct_confidences))
+        return np.mean(-np.log(correct_confidences))
 
     def backward(self, dvalues, y_true):
         samples = len(dvalues)

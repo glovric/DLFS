@@ -21,6 +21,17 @@ class Layer:
                     parameters[attr_name] = attr_value
         return parameters
 
+class Module:
+    """
+    Module abstract base class.
+    """
+
+    def forward(self, inputs: np.ndarray) -> None:
+        pass
+
+    def backward(self, delta: np.ndarray) -> None:
+        pass
+
 class Activation:
     """
     Activation function abstract base class.
@@ -48,30 +59,8 @@ class Optimizer:
     def pre_update_parameters(self) -> None:
         pass
 
-    def update_layer_parameters(self, layer: Layer) -> None:
+    def update_parameters(self, module: Layer | Module) -> None:
         pass
 
     def post_update_parameters(self) -> None:
-        pass
-
-class Module:
-    """
-    Module abstract base class.
-    """
-
-    def forward(self, inputs: np.ndarray) -> None:
-        pass
-
-    def backward(self, delta: np.ndarray) -> None:
-        pass
-
-class Model:
-    """
-    Model abstract base class.
-    """
-
-    def forward(self, inputs: np.ndarray) -> None:
-        pass
-
-    def backward(self, delta: np.ndarray) -> None:
         pass

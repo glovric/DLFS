@@ -57,7 +57,7 @@ class Optimizer_SGD(Optimizer):
             update = -self.current_learning_rate * gradients
             return params + update, None
         
-    def _update_parameters(self, layer: Layer) -> None:
+    def _update_layer_parameters(self, layer: Layer) -> None:
         """
         Helper method for updating parameters of a layer.
 
@@ -88,7 +88,7 @@ class Optimizer_SGD(Optimizer):
                 # Set new momentums attribute to layer
                 setattr(layer, param_name + "_momentums", new_momentums)
         
-    def _init_parameters(self, layer: Layer) -> None:
+    def _init_layer_parameters(self, layer: Layer) -> None:
         """
         Helper method for initializing momentums of a layer.
 
@@ -118,7 +118,7 @@ class Optimizer_SGD(Optimizer):
             # Inverse decay method
             self.current_learning_rate = self.learning_rate  / (1 + self.iterations * self.decay)
 
-    def update_layer_parameters(self, layer: Layer) -> None:
+    def update_parameters(self, layer: Layer) -> None:
         """
         Method for updating layer parameters recursively.
 
@@ -141,20 +141,20 @@ class Optimizer_SGD(Optimizer):
 
             # Check if momentums are initialized and should they be initialized
             if not hasattr(layer, param_name + "_momentums") and self.momentum:
-                self._init_parameters(layer)
+                self._init_layer_parameters(layer)
 
             # Update layer parameters
-            self._update_parameters(layer)
+            self._update_layer_parameters(layer)
 
         # Case 2: if layer object is a list perform recursive update for every element of the list
         elif isinstance(layer, list):
             for l in layer:
-                self.update_layer_parameters(l)
+                self.update_parameters(l)
 
         # Case 3: if layer object has its own class attributes perform recursive update for every class attribute
         elif isinstance(layer, Module):
             for _, attr in vars(layer).items():
-                self.update_layer_parameters(attr)
+                self.update_parameters(attr)
 
     def post_update_parameters(self) -> None:
         """
@@ -202,7 +202,7 @@ class Optimizer_Adam(Optimizer):
         self.beta_2 = beta_2
         self.iterations = 0 
 
-    def _init_parameters(self, layer: Layer) -> None:
+    def _init_layer_parameters(self, layer: Layer) -> None:
         """
         Helper method for initializing Adam parameters of a layer (momentums or cache).
 
@@ -221,7 +221,7 @@ class Optimizer_Adam(Optimizer):
             setattr(layer, f"{p}_cache", np.zeros_like(params[p]))
             setattr(layer, f"{p}_momentums", np.zeros_like(params[p]))
 
-    def _update_parameters(self, layer: Layer) -> None:
+    def _update_layer_parameters(self, layer: Layer) -> None:
         """
         Helper method for updating parameters of a layer.
 
@@ -297,7 +297,7 @@ class Optimizer_Adam(Optimizer):
             # Inverse decay method
             self.current_learning_rate = self.learning_rate  / (1 + self.iterations * self.decay)
 
-    def update_layer_parameters(self, layer: Layer) -> None:
+    def update_parameters(self, layer: Layer) -> None:
         """
         Method for updating layer parameters.
 
@@ -318,17 +318,17 @@ class Optimizer_Adam(Optimizer):
             param_name = list(params.keys())[0] 
 
             if not hasattr(layer, param_name + "_cache"):
-                self._init_parameters(layer)
+                self._init_layer_parameters(layer)
 
-            self._update_parameters(layer)
+            self._update_layer_parameters(layer)
 
         elif isinstance(layer, list):
             for l in layer:
-                self.update_layer_parameters(l)
+                self.update_parameters(l)
 
         elif isinstance(layer, Module):
             for _, attr in vars(layer).items():
-                self.update_layer_parameters(attr)
+                self.update_parameters(attr)
 
     def post_update_parameters(self) -> None:
         """

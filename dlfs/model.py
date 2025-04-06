@@ -1,16 +1,15 @@
-from typing import Union
 import numpy as np
-from .base import Layer, Activation, Loss, Optimizer, Model
+from .base import Layer, Activation, Loss, Optimizer, Module
 
-class SequentialModel(Model):
+class SequentialModel(Module):
 
-    def __init__(self, layers: list[Union[Layer, Activation]] = None, loss_function: Loss = None, optimizer: Optimizer = None) -> None:
+    def __init__(self, layers: list[Layer | Module | Activation] = None, loss_function: Loss = None, optimizer: Optimizer = None) -> None:
         """
         Neural network model.
 
         Parameters
         ----------
-        layers : list[Union[Layer, Activation]], default=None
+        layers : list[Layer | Module | Activation], default=None
             List of layers and activation functions.
 
         loss_function : Loss, default=None
@@ -87,7 +86,7 @@ class SequentialModel(Model):
         # Loop through all layers
         for layer in self.layers:
 
-            self.optimizer.update_layer_parameters(layer)
+            self.optimizer.update_parameters(layer)
 
         self.optimizer.post_update_parameters()
 

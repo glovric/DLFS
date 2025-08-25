@@ -18,7 +18,21 @@ Architectures currently implemented:
 
 - Autoencoder
 
-## Setup
+## uv Setup
+
+1. **Create virtual environment and install dependencies** (optional):
+
+    ```bash
+    uv sync
+    ```
+
+2. **Install dlfs library**:
+
+    ```bash
+    uv pip install -e .
+    ```
+
+## pip Setup
 
 1. **Set up a virtual environment** (optional):
 

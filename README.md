@@ -34,7 +34,7 @@ Architectures currently implemented:
 
 ## pip Setup
 
-1. **Set up a virtual environment** (optional):
+1. **Set up a virtual environment**:
 
     ```bash
     python -m venv venv

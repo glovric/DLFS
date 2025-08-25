@@ -20,7 +20,7 @@ Architectures currently implemented:
 
 ## uv Setup
 
-1. **Create virtual environment and install dependencies** (optional):
+1. **Create virtual environment and install dependencies**:
 
     ```bash
     uv sync

@@ -168,7 +168,7 @@ class Optimizer_SGD(Optimizer):
 
 class Optimizer_Adam(Optimizer):
 
-    def __init__(self, learning_rate=1e-3, decay=0, epsilon=1e-7, beta_1=0.9, beta_2=0.999) -> None:
+    def __init__(self, learning_rate=1e-3, decay=0, epsilon=1e-7,beta_1=0.9, beta_2=0.999, clip_grad=False):
         """
         Adam optimizing algorithm.
 
@@ -194,13 +194,14 @@ class Optimizer_Adam(Optimizer):
         iterations : int, default=0
             Number of training iterations used to calculate new learning rate with decay.
         """
-        self.learning_rate = learning_rate
+        self.learning_rate = learning_rate 
         self.current_learning_rate = learning_rate
         self.decay = decay
         self.epsilon = epsilon
         self.beta_1 = beta_1
         self.beta_2 = beta_2
-        self.iterations = 0 
+        self.clip_grad = clip_grad
+        self.iterations = 0
 
     def _init_layer_parameters(self, layer: Layer) -> None:
         """
@@ -285,17 +286,38 @@ class Optimizer_Adam(Optimizer):
         parameter_update = -self.current_learning_rate * momentums_corrected / (np.sqrt(cache_corrected) + self.epsilon)
         return params + parameter_update, new_momentums, new_cache
 
-    def pre_update_parameters(self) -> None:
+    def _clip_gradients(self, layer: Layer, clip_factor=0.2, eps=1e-3):
         """
-        Method for updating learning rate based on current number of iterations and decay.
+        Adaptive Gradient Clipping (AGC) of gradients based on parameter norms.
 
-        Returns
-        -------
-        None
+        Parameters
+        ----------
+        layer : Layer
+            Layer whose gradients will be clipped.
+        clip_factor : float
+            Ratio of gradient norm to parameter norm to clip at.
+        eps : float
+            Small value to avoid division by zero.
         """
+        params = layer.get_parameters()
+
+        for param_name in params:
+            param = getattr(layer, param_name)
+            grad = getattr(layer, "d" + param_name, None)
+            if grad is not None:
+                param_norm = np.linalg.norm(param)
+                grad_norm = np.linalg.norm(grad)
+
+                max_grad_norm = clip_factor * max(param_norm, eps)
+
+                if grad_norm > max_grad_norm:
+                    scale = max_grad_norm / (grad_norm + eps)
+                    clipped_grad = grad * scale
+                    setattr(layer, "d" + param_name, clipped_grad)
+
+    def pre_update_parameters(self) -> None:
         if self.decay:
-            # Inverse decay method
-            self.current_learning_rate = self.learning_rate  / (1 + self.iterations * self.decay)
+            self.current_learning_rate = self.learning_rate / (1 + self.iterations * self.decay)
 
     def update_parameters(self, layer: Layer) -> None:
         """
@@ -319,6 +341,9 @@ class Optimizer_Adam(Optimizer):
 
             if not hasattr(layer, param_name + "_cache"):
                 self._init_layer_parameters(layer)
+
+            if self.clip_grad:
+                self._clip_gradients(layer)
 
             self._update_layer_parameters(layer)
 

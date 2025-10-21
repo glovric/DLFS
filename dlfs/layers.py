@@ -27,7 +27,8 @@ class DenseLayer(Layer):
         """
 
         # Weights are randomly initialized, small random numbers seem to work well
-        self.weights = 0.1 * np.random.randn(n_inputs, n_neurons)
+        lim = np.sqrt(2 / n_inputs)
+        self.weights = lim * np.random.randn(n_inputs, n_neurons)
         # Bias vector is initialized to a zero vector
         self.biases = np.zeros(n_neurons)
 
@@ -893,8 +894,8 @@ class DropoutLayer(Layer):
     def backward(self, dvalues):
         self.dinputs = dvalues * self.binary_mask
 
-class LayerNorm(Layer):
-    def __init__(self, num_features, epsilon=1e-5):
+'''class LayerNorm(Layer):
+    def __init__(self, num_features, epsilon=1e-3):
         """
         Initializes the LayerNorm layer.
         
@@ -915,23 +916,62 @@ class LayerNorm(Layer):
         :param x: Input data of shape (batch_size, num_features)
         :return: Layer normalized output
         """
-        mean = np.mean(inputs, axis=-1, keepdims=True)
-        variance = np.var(inputs, axis=-1, keepdims=True)
+        self.inputs = inputs
+        self.mean = np.mean(inputs, axis=-1, keepdims=True)
+        self.variance = np.var(inputs, axis=-1, keepdims=True)
 
-        self.normalized = (inputs - mean) / np.sqrt(variance + self.epsilon)
+        self.normalized = (self.inputs - self.mean) / np.sqrt(self.variance + self.epsilon)
         self.output = self.gamma * self.normalized + self.beta
     
     def backward(self, delta):
-        """
-        Backward pass for LayerNorm, computing the gradients.
-        
-        :param dout: The gradient of the loss with respect to the output.
-        :return: Gradients with respect to input (dx), gamma, and beta.
-        """
-        self.dbeta = np.sum(delta, axis=(0, 1))
-        self.dgamma = np.sum(delta * self.normalized, axis=(0, 1))
-        dnorm = delta * self.gamma
-        self.dinputs = dnorm - np.mean(dnorm, axis=-1, keepdims=True) - self.normalized * np.mean(dnorm * self.normalized, axis=-1, keepdims=True)
+        # Assumes delta has shape (B, ..., F) matching self.output
+        N = self.inputs.shape[-1]  # num_features
+        std_inv = 1.0 / np.sqrt(self.variance + self.epsilon)  # shape: (B, ..., 1)
+
+        # Gradients w.r.t gamma and beta
+        self.dgamma = np.sum(delta * self.normalized, axis=tuple(range(delta.ndim - 1)), keepdims=False)
+        self.dbeta = np.sum(delta, axis=tuple(range(delta.ndim - 1)), keepdims=False)
+
+        # Gradient w.r.t normalized input
+        dx_hat = delta * self.gamma
+
+        # Gradients w.r.t input using LayerNorm formula
+        dvar = np.sum(dx_hat * (self.inputs - self.mean) * -0.5 * std_inv**3, axis=-1, keepdims=True)
+        dmean = np.sum(-dx_hat * std_inv, axis=-1, keepdims=True) + dvar * np.mean(-2.0 * (self.inputs - self.mean), axis=-1, keepdims=True)
+
+        self.dinputs = dx_hat * std_inv + dvar * 2.0 * (self.inputs - self.mean) / N + dmean / N
+
+
+    def get_parameters(self):
+        param_names = ["gamma", "beta"]
+        return super()._filter_parameters(param_names)'''
+
+class LayerNorm(Layer):
+    def __init__(self, num_features, epsilon=1e-3):
+        self.epsilon = epsilon
+        self.gamma = np.ones(num_features)  # Shape: num_features
+        self.beta = np.zeros(num_features)  # Shape: (1, num_features)
+
+    def forward(self, inputs, training=False):
+        self.inputs = inputs
+        self.mean = np.mean(inputs, axis=-1, keepdims=True)
+        self.variance = np.var(inputs, axis=-1, keepdims=True)
+        self.std_inv = 1.0 / np.sqrt(self.variance + self.epsilon)
+
+        self.normalized = (inputs - self.mean) * self.std_inv
+        self.output = self.gamma * self.normalized + self.beta
+
+    def backward(self, delta):
+        N = self.inputs.shape[-1]
+        x_mu = self.inputs - self.mean
+        dx_hat = delta * self.gamma
+
+        dvar = np.sum(dx_hat * x_mu, axis=-1, keepdims=True) * -0.5 * self.std_inv**3
+        dmean = np.sum(-dx_hat * self.std_inv, axis=-1, keepdims=True) + dvar * np.mean(-2.0 * x_mu, axis=-1, keepdims=True)
+
+        self.dinputs = dx_hat * self.std_inv + dvar * 2.0 * x_mu / N + dmean / N
+        self.dgamma = np.sum(delta * self.normalized, axis=(0, 1), keepdims=True)
+        self.dbeta = np.sum(delta, axis=(0, 1), keepdims=True)
 
     def get_parameters(self):
         param_names = ["gamma", "beta"]

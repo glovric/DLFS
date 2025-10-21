@@ -111,12 +111,10 @@ class CCE_Loss(Loss):
 
         return np.mean(-np.log(correct_confidences))
 
-    def backward(self, dvalues, y_true):
-        samples = len(dvalues)
-        labels = len(dvalues[0])
+    def backward(self, y_pred, y_true):
+        samples = len(y_pred)
 
-        if(len(y_true.shape)) == 1:
-            y_true = np.eye(labels)[y_true]
+        if len(y_true.shape) == 1:
+            y_true = np.eye(y_pred.shape[1])[y_true]
 
-        self.dinputs = -y_true / dvalues
-        self.dinputs = self.dinputs / samples  
+        self.dinputs = (y_pred - y_true) / samples

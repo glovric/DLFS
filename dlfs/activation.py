@@ -83,6 +83,53 @@ class ReLU(Activation):
         # Derivative of ReLU
         self.dinputs[self.inputs < 0] = 0
 
+class GELU(Activation):
+    def __init__(self) -> None:
+        """
+        Gaussian Error Linear Unit (GELU) activation function.
+        Approximate version used for performance.
+        """
+        pass
+
+    def forward(self, inputs: np.ndarray, training=False) -> None:
+        """
+        Forward pass using GELU activation (approximation).
+        Creates output attribute.
+
+        Parameters
+        ----------
+        inputs : numpy.ndarray
+            Input matrix.
+        """
+        self.inputs = inputs
+        self.output = 0.5 * inputs * (
+            1 + np.tanh(np.sqrt(2 / np.pi) * (inputs + 0.044715 * np.power(inputs, 3)))
+        )
+
+    def backward(self, delta: np.ndarray) -> None:
+        """
+        Backward pass using GELU activation (approximate derivative).
+        Creates dinputs attribute (gradient of the loss with respect to inputs).
+
+        Parameters
+        ----------
+        delta : numpy.ndarray
+            Accumulated gradient from upstream layers.
+        """
+        x = self.inputs
+        tanh_out = np.tanh(np.sqrt(2 / np.pi) * (x + 0.044715 * x**3))
+        sech2 = 1 - tanh_out**2
+
+        term1 = 0.5 * tanh_out
+        term2 = (
+            (0.5 * x * sech2)
+            * (np.sqrt(2 / np.pi) * (1 + 3 * 0.044715 * x**2))
+        )
+        grad = term1 + term2 + 0.5
+
+        self.dinputs = delta * grad
+
+
 class Sigmoid(Activation):
 
     def __init__(self) -> None:

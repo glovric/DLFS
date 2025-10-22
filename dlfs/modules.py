@@ -1,7 +1,7 @@
 import numpy as np
 from .base import Module
 from .layers import *
-from .activation import Softmax, ReLU
+from .activation import Softmax, ReLU, GELU
 
 class RNN(Module):
 
@@ -350,8 +350,8 @@ class MultiHeadAttention(Module):
             self.dinputs_query += self.attention_heads[i].dinputs_query
             self.dinputs_context += self.attention_heads[i].dinputs_context
 
-        self.dinputs_query /= self.n_heads
-        self.dinputs_context /= self.n_heads
+        #self.dinputs_query /= self.n_heads
+        #self.dinputs_context /= self.n_heads
 
         if self.is_cross_attention:
             self.dinputs = None
@@ -359,17 +359,17 @@ class MultiHeadAttention(Module):
             self.dinputs = self.dinputs_query + self.dinputs_context
 
 class FeedForward(Module):
-    def __init__(self, d_model, hidden_dim=2048, dropout=0.1):
+    def __init__(self, d_model=512, hidden_dim=2048, dropout=0.1, activation=ReLU()):
         self.fc1 = DenseLayer(d_model, hidden_dim)
-        self.relu = ReLU()
+        self.activation = activation
         self.dropout1 = DropoutLayer(dropout)
         self.fc2 = DenseLayer(hidden_dim, d_model)
         self.dropout2 = DropoutLayer(dropout)
 
     def forward(self, inputs, training):
         self.fc1.forward(inputs)
-        self.relu.forward(self.fc1.output)
-        self.dropout1.forward(self.relu.output, training)
+        self.activation.forward(self.fc1.output)
+        self.dropout1.forward(self.activation.output, training)
         self.fc2.forward(self.dropout1.output)
         self.dropout2.forward(self.fc2.output, training)
         self.output = self.dropout2.output
@@ -378,21 +378,21 @@ class FeedForward(Module):
         self.dropout2.backward(delta)
         self.fc2.backward(self.dropout2.dinputs)
         self.dropout1.backward(self.fc2.dinputs)
-        self.relu.backward(self.dropout1.dinputs)
-        self.fc1.backward(self.relu.dinputs)
+        self.activation.backward(self.dropout1.dinputs)
+        self.fc1.backward(self.activation.dinputs)
         self.dinputs = self.fc1.dinputs
         
 class TransformerDecoderBlock(Module):
     
-    def __init__(self, d_model, n_head, dim_ff=2048, dropout=0.1):
+    def __init__(self, d_model=512, n_head=4, dim_ff=2048, dropout=0.1, activation=ReLU(), layer_norm_eps=1e-5):
         self.mask_mha = MultiHeadAttention(d_model, n_head, dropout=dropout, use_mask=True)
-        self.ln1 = LayerNorm(d_model)
+        self.ln1 = LayerNorm(d_model, epsilon=layer_norm_eps)
 
         self.cross_mha = MultiHeadAttention(d_model, n_head, dropout=dropout, use_mask=False)
-        self.ln2 = LayerNorm(d_model)
+        self.ln2 = LayerNorm(d_model, epsilon=layer_norm_eps)
 
-        self.ffwd = FeedForward(d_model, hidden_dim=dim_ff, dropout=dropout)
-        self.ln3 = LayerNorm(d_model)
+        self.ffwd = FeedForward(d_model, hidden_dim=dim_ff, dropout=dropout, activation=activation)
+        self.ln3 = LayerNorm(d_model, epsilon=layer_norm_eps)
 
     def forward(self, x, enc_output, training):
         self.ln1.forward(x, training)
@@ -421,15 +421,15 @@ class TransformerDecoderBlock(Module):
 
         self.ln1.backward(d_mask_residual)
         self.mask_mha.backward(self.ln1.dinputs)
-        self.dinputs = self.mask_mha.dinputs + delta
+        self.dinputs = self.mask_mha.dinputs
 
 class TransformerEncoderBlock(Module):
-    def __init__(self, d_model, n_head, dim_ff=2048, dropout=0.1):
+    def __init__(self, d_model=512, n_head=4, dim_ff=2048, dropout=0.1, activation=ReLU(), layer_norm_eps=1e-5):
         self.mha = MultiHeadAttention(d_model, n_head, dropout=dropout, use_mask=False)
-        self.ln1 = LayerNorm(d_model)
+        self.ln1 = LayerNorm(d_model, epsilon=layer_norm_eps)
 
-        self.ffwd = FeedForward(d_model, hidden_dim=dim_ff, dropout=dropout)
-        self.ln2 = LayerNorm(d_model)
+        self.ffwd = FeedForward(d_model, hidden_dim=dim_ff, dropout=dropout, activation=activation)
+        self.ln2 = LayerNorm(d_model, epsilon=layer_norm_eps)
 
     def forward(self, x, training):
         self.ln1.forward(x, training)
@@ -450,172 +450,73 @@ class TransformerEncoderBlock(Module):
 
         self.mha.backward(d_mha_residual)
         self.ln1.backward(self.mha.dinputs)
-        self.dinputs = self.ln1.dinputs + delta
+        self.dinputs = self.ln1.dinputs
 
 class Transformer(Module):
 
-    def __init__(self, vocab_size, block_size, n_embed, n_head, n_layers, dim_ff, dropout, loss_function, optimizer):
+    def __init__(self, d_model=512, n_head = 4, n_enc_layers=2, n_dec_layers=2, dim_ff=2048, 
+                       dropout=0.1, activation=ReLU(), layer_norm_eps=1e-5):
+    
+        self.encoder_layers = [TransformerEncoderBlock(d_model=d_model, 
+                                                n_head=n_head, 
+                                                dim_ff=dim_ff, 
+                                                dropout=dropout, 
+                                                layer_norm_eps=layer_norm_eps) for _ in range(n_enc_layers)]
+
+        self.decoder_layers = [TransformerDecoderBlock(d_model=d_model, 
+                                                n_head=n_head, 
+                                                dim_ff=dim_ff, 
+                                                dropout=dropout, 
+                                                layer_norm_eps=layer_norm_eps) for _ in range(n_dec_layers)]
+
+    def _encoder_forward(self, inputs_enc, training=False):
+        self.encoder_layers[0].forward(inputs_enc, training)
+        for idx, enc in enumerate(self.encoder_layers[1:], start=1):
+            enc.forward(self.encoder_layers[idx-1].output, training)
+        self.encoder_output = self.encoder_layers[-1].output
+
+    def _decoder_forward(self, inputs_dec, outputs_enc, training=False):
+        self.decoder_layers[0].forward(inputs_dec, outputs_enc, training)
+        for idx, dec in enumerate(self.decoder_layers[1:], start=1):
+            dec.forward(self.decoder_layers[idx-1].output, self.encoder_layers[-1].output, training)
+        self.decoder_output = self.decoder_layers[-1].output
+
+    def _encoder_backward(self, delta):
+        self.encoder_layers[-1].backward(delta)
+        for idx, enc in reversed(list(enumerate(self.encoder_layers[:-1]))):
+            enc.backward(self.encoder_layers[idx + 1].dinputs)
+        self.encoder_dinputs = self.encoder_layers[0].dinputs
+
+    def _decoder_backward(self, delta):
+        self.decoder_layers[-1].backward(delta)
+        for idx, dec in reversed(list(enumerate(self.decoder_layers[:-1]))):
+            dec.backward(self.decoder_layers[idx + 1].dinputs)
+        self.decoder_dinputs = self.decoder_layers[0].dinputs
         
-        self.block_size = block_size
-        self.loss_function = loss_function
-        self.optimizer = optimizer
-
-        self.embed_enc = EmbeddingLayer(vocab_size, n_embed)
-        self.pos_enc_enc = PositionalEncoding(block_size, n_embed)
-
-        self.embed_dec = EmbeddingLayer(vocab_size, n_embed)
-        self.pos_enc_dec = PositionalEncoding(block_size, n_embed)
-
-        self.encoder = [TransformerEncoderBlock(n_embed, n_head, dim_ff=dim_ff, dropout=dropout) for _ in range(n_layers)]
-        self.decoder = [TransformerDecoderBlock(n_embed, n_head, dim_ff=dim_ff, dropout=dropout) for _ in range(n_layers)]
-        self.linear = DenseLayer(n_embed, vocab_size)
-        self.softm = Softmax()
-
-    def forward(self, inputs_enc, inputs_dec, training):
-        self.embed_enc.forward(inputs_enc, training)
-        self.pos_enc_enc.forward(self.embed_enc.output, training)
-
-        # Encoder forward
-        self.encoder[0].forward(self.pos_enc_enc.output, training)
-        for idx, enc in enumerate(self.encoder[1:], start=1):
-            enc.forward(self.encoder[idx-1].output, training)
-
-        self.embed_dec.forward(inputs_dec, training)
-        self.pos_enc_dec.forward(self.embed_dec.output, training)
-
-        # Decoder forward
-        self.decoder[0].forward(self.pos_enc_dec.output, self.encoder[-1].output, training)
-        for idx, dec in enumerate(self.decoder[1:], start=1):
-            dec.forward(self.decoder[idx-1].output, self.encoder[-1].output, training)
-
-        self.linear.forward(self.decoder[-1].output)
-        self.softm.forward(self.linear.output)
-        self.output = self.softm.output
-
-    def backward(self, output, y):
-        y_pred = output
-        B, T, C = y_pred.shape
-        y_pred = y_pred.reshape(B*T, C)
-        y_true = y.reshape(B*T)
-
-        self.loss_function.backward(y_pred, y_true)
-
-        #self.softm.backward(self.loss_function.dinputs.reshape(B, T, C))
-        self.linear.backward(self.loss_function.dinputs.reshape(B, T, C))
-
-        self.decoder[-1].backward(self.linear.dinputs)
-        for idx, dec in reversed(list(enumerate(self.decoder[:-1]))):
-            dec.backward(self.decoder[idx + 1].dinputs)
-
-        grad_wrt_encoder_output_total = np.zeros_like(self.decoder[0].output)
-        for idx, dec in enumerate(self.decoder):
+        grad_wrt_encoder_output_total = np.zeros_like(self.decoder_layers[0].output)
+        for idx, dec in enumerate(self.decoder_layers):
             grad_wrt_encoder_output_total += dec.grad_wrt_encoder_output
 
-        self.pos_enc_dec.backward(self.decoder[0].dinputs)
-        self.embed_dec.backward(self.pos_enc_dec.dinputs)
+        self.grad_wrt_encoder_output_total = grad_wrt_encoder_output_total
+        
+    def forward(self, inputs_enc, inputs_dec, training=False):
+        self._encoder_forward(inputs_enc, training)
+        self._decoder_forward(inputs_dec, self.encoder_output, training)
+        self.output = self.decoder_output
 
-        self.encoder[-1].backward(grad_wrt_encoder_output_total)
-        for idx, enc in reversed(list(enumerate(self.encoder[:-1]))):
-            enc.backward(self.encoder[idx + 1].dinputs)
-
-        self.pos_enc_enc.backward(self.encoder[0].dinputs)
-        self.embed_enc.backward(self.pos_enc_enc.dinputs)
+    def backward(self, delta):
+        self._decoder_backward(delta)
+        self._encoder_backward(self.grad_wrt_encoder_output_total)
 
     def _print_grad_norms(self):
         print(f'-------------------GRADS------------------')
-        print(f'CCE: {np.linalg.norm(self.loss_function.dinputs)}')
-        print(f'Linear: {np.linalg.norm(self.linear.dweights)}')
+        for i in range(len(self.decoder_layers)):
+            print(f'Decoder ffwd {i}: {np.linalg.norm(self.decoder_layers[i].ffwd.dinputs)}')
+            print(f'Decoder cross MHA {i}: {np.linalg.norm(self.decoder_layers[i].cross_mha.dinputs_query)} | {np.linalg.norm(self.decoder_layers[i].cross_mha.dinputs_context)}')
+            print(f'Decoder mask MHA {i}: {np.linalg.norm(self.decoder_layers[i].mask_mha.dinputs)}')
+            print(f'Decoder grad for encoder {i}: {np.linalg.norm(self.decoder_layers[i].grad_wrt_encoder_output)}')
         for i in range(len(self.encoder)):
-            print(f'Decoder ffwd {i}: {np.linalg.norm(self.decoder[i].ffwd.dinputs)}')
-            print(f'Decoder cross MHA {i}: {np.linalg.norm(self.decoder[i].cross_mha.dinputs_query)} | {np.linalg.norm(self.decoder[i].cross_mha.dinputs_context)}')
-            print(f'Decoder mask MHA {i}: {np.linalg.norm(self.decoder[i].mask_mha.dinputs)}')
-            print(f'Decoder grad for encoder {i}: {np.linalg.norm(self.decoder[i].grad_wrt_encoder_output)}')
-        for i in range(len(self.encoder)):
-            print(f'Encoder ffwd {i}: {np.linalg.norm(self.encoder[i].ffwd.dinputs)}')
-            print(f'Encoder MHA {i}: {np.linalg.norm(self.encoder[i].mha.dinputs_query)} | {np.linalg.norm(self.encoder[i].mha.dinputs_context)}')
-            print(f'Encoder dipnuts {i}: {np.linalg.norm(self.encoder[i].dinputs)}')
+            print(f'Encoder ffwd {i}: {np.linalg.norm(self.encoder_layers[i].ffwd.dinputs)}')
+            print(f'Encoder MHA {i}: {np.linalg.norm(self.encoder_layers[i].mha.dinputs_query)} | {np.linalg.norm(self.encoder_layers[i].mha.dinputs_context)}')
+            print(f'Encoder dipnuts {i}: {np.linalg.norm(self.encoder_layers[i].dinputs)}')
         print(f'------------------------------------------')
-
-    def train(self, X, y_dec, y_true, epochs = 1000, batch_size: int = None, print_every: int = None):
-
-        self.loss_vals = []
-        self.i_vals = []
-
-        for i in range(epochs + 1):
-            #batch_X, batch_y_dec, batch_y_true = get_random_batch(X, y_dec, y_true, batch_size)
-            #batch_X, batch_y_dec, batch_y_true = batch_X.astype(int), batch_y_dec.astype(int), batch_y_true.astype(int)
-
-            self.forward(X, y_dec, training=True)
-            
-            #print(f'output: {self.output}, y: {y_true}')
-            self.backward(self.output, y_true)
-
-            self.optimizer.pre_update_parameters()
-            self.optimizer.update_parameters(self)
-            self.optimizer.post_update_parameters()
-
-            if print_every is not None and not i % print_every:
-                output = self.output
-                B, T, C = output.shape
-                print(f'===== EPOCH : {i} ===== LOSS : {self.loss_function.calculate(output.reshape(B*T, C), y_true.reshape(B*T))} =====')
-                self.loss_vals.append(self.loss_function.calculate(output.reshape(B*T, C), y_true.reshape(B*T)))
-                self.i_vals.append(i)
-                #self._print_grad_norms()
-                
-
-    def generate(self, inputs_enc, max_len=5, start_token=10, end_token=11):
-        """
-        Generate output sequence given input encoding.
-        
-        inputs_enc: np.ndarray of shape (batch_size, source_seq_len)
-        max_len: max length of generated sequence
-        start_token: int, index of <SOS> token
-        end_token: int, index of <EOS> token
-        
-        Returns:
-            generated sequences of shape (batch_size, generated_seq_len)
-        """
-        batch_size = inputs_enc.shape[0]
-        
-        # Run encoder once
-        self.embed_enc.forward(inputs_enc, training=False)
-        self.pos_enc_enc.forward(self.embed_enc.output, training=False)
-        self.encoder[0].forward(self.pos_enc_enc.output, training=False)
-        for idx, enc in enumerate(self.encoder[1:], start=1):
-            enc.forward(self.encoder[idx-1].output, training=False)
-        encoder_output = self.encoder[-1].output
-        
-        # Initialize decoder input with start tokens (shape: batch_size x 1)
-        decoder_input = np.full((batch_size, 1), start_token, dtype=int)
-        
-        generated = decoder_input.copy()
-        
-        for _ in range(max_len):
-            # Decoder forward pass for current decoder input
-            self.embed_dec.forward(decoder_input, training=False)
-            self.pos_enc_dec.forward(self.embed_dec.output, training=False)
-
-            self.decoder[0].forward(self.pos_enc_dec.output, self.encoder[-1].output, training=False)
-            for idx, dec in enumerate(self.decoder[1:], start=1):
-                dec.forward(self.decoder[idx-1].output, self.encoder[-1].output, training=False)
-
-            self.linear.forward(self.decoder[-1].output)
-            self.softm.forward(self.linear.output)
-            
-            # Get last timestep prediction probs (batch_size, vocab_size)
-            probs = self.softm.output[:, -1, :]
-            
-            # Greedy decode: pick the highest probability token for each example
-            next_tokens = np.argmax(probs, axis=1).reshape(-1, 1)
-            
-            # Append to generated sequences
-            generated = np.concatenate([generated, next_tokens], axis=1)
-            
-            # Prepare next decoder input
-            decoder_input = generated
-            
-            # Stop if all sequences generated <EOS>
-            if np.all(next_tokens == end_token):
-                break
-        
-        return generated

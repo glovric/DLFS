@@ -894,7 +894,7 @@ class DropoutLayer(Layer):
     def backward(self, dvalues):
         self.dinputs = dvalues * self.binary_mask
 
-'''class LayerNorm(Layer):
+class LayerNorm(Layer):
     def __init__(self, num_features, epsilon=1e-3):
         """
         Initializes the LayerNorm layer.
@@ -902,12 +902,11 @@ class DropoutLayer(Layer):
         :param num_features: The number of features in the input (i.e., the dimension to normalize over).
         :param epsilon: Small value to prevent division by zero when computing the standard deviation.
         """
-        self.num_features = num_features
         self.epsilon = epsilon
         
         # Initialize the scale (gamma) and shift (beta) parameters
-        self.gamma = np.ones(num_features)  # Shape: num_features
-        self.beta = np.zeros(num_features)  # Shape: (1, num_features)
+        self.gamma = np.ones(num_features)
+        self.beta = np.zeros(num_features)
         
     def forward(self, inputs, training=False):
         """
@@ -917,16 +916,18 @@ class DropoutLayer(Layer):
         :return: Layer normalized output
         """
         self.inputs = inputs
-        self.mean = np.mean(inputs, axis=-1, keepdims=True)
-        self.variance = np.var(inputs, axis=-1, keepdims=True)
 
-        self.normalized = (self.inputs - self.mean) / np.sqrt(self.variance + self.epsilon)
+        mean = np.mean(inputs, axis=-1, keepdims=True)
+        variance = np.var(inputs, axis=-1, keepdims=True)
+        self.std_inv = 1.0 / np.sqrt(variance + self.epsilon)
+
+        self.centered = self.inputs - mean
+        self.normalized = self.centered * self.std_inv
         self.output = self.gamma * self.normalized + self.beta
     
     def backward(self, delta):
         # Assumes delta has shape (B, ..., F) matching self.output
         N = self.inputs.shape[-1]  # num_features
-        std_inv = 1.0 / np.sqrt(self.variance + self.epsilon)  # shape: (B, ..., 1)
 
         # Gradients w.r.t gamma and beta
         self.dgamma = np.sum(delta * self.normalized, axis=tuple(range(delta.ndim - 1)), keepdims=False)
@@ -936,42 +937,10 @@ class DropoutLayer(Layer):
         dx_hat = delta * self.gamma
 
         # Gradients w.r.t input using LayerNorm formula
-        dvar = np.sum(dx_hat * (self.inputs - self.mean) * -0.5 * std_inv**3, axis=-1, keepdims=True)
-        dmean = np.sum(-dx_hat * std_inv, axis=-1, keepdims=True) + dvar * np.mean(-2.0 * (self.inputs - self.mean), axis=-1, keepdims=True)
+        dvar = np.sum(dx_hat * self.centered * -0.5 * self.std_inv**3, axis=-1, keepdims=True)
+        dmean = np.sum(-dx_hat * self.std_inv, axis=-1, keepdims=True) + dvar * np.mean(-2.0 * self.centered, axis=-1, keepdims=True)
 
-        self.dinputs = dx_hat * std_inv + dvar * 2.0 * (self.inputs - self.mean) / N + dmean / N
-
-
-    def get_parameters(self):
-        param_names = ["gamma", "beta"]
-        return super()._filter_parameters(param_names)'''
-
-class LayerNorm(Layer):
-    def __init__(self, num_features, epsilon=1e-3):
-        self.epsilon = epsilon
-        self.gamma = np.ones(num_features)  # Shape: num_features
-        self.beta = np.zeros(num_features)  # Shape: (1, num_features)
-
-    def forward(self, inputs, training=False):
-        self.inputs = inputs
-        self.mean = np.mean(inputs, axis=-1, keepdims=True)
-        self.variance = np.var(inputs, axis=-1, keepdims=True)
-        self.std_inv = 1.0 / np.sqrt(self.variance + self.epsilon)
-
-        self.normalized = (inputs - self.mean) * self.std_inv
-        self.output = self.gamma * self.normalized + self.beta
-
-    def backward(self, delta):
-        N = self.inputs.shape[-1]
-        x_mu = self.inputs - self.mean
-        dx_hat = delta * self.gamma
-
-        dvar = np.sum(dx_hat * x_mu, axis=-1, keepdims=True) * -0.5 * self.std_inv**3
-        dmean = np.sum(-dx_hat * self.std_inv, axis=-1, keepdims=True) + dvar * np.mean(-2.0 * x_mu, axis=-1, keepdims=True)
-
-        self.dinputs = dx_hat * self.std_inv + dvar * 2.0 * x_mu / N + dmean / N
-        self.dgamma = np.sum(delta * self.normalized, axis=(0, 1), keepdims=True)
-        self.dbeta = np.sum(delta, axis=(0, 1), keepdims=True)
+        self.dinputs = dx_hat * self.std_inv + dvar * 2.0 * self.centered / N + dmean / N
 
     def get_parameters(self):
         param_names = ["gamma", "beta"]

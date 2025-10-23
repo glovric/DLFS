@@ -193,41 +193,35 @@ class Softmax(Activation):
         exp = np.exp(inputs - np.max(inputs, axis=-1, keepdims=True))
         self.output = exp / np.sum(exp, axis=-1, keepdims=True)
 
+    @staticmethod
+    def calculate(inputs: np.ndarray) -> np.ndarray:
+        exp = np.exp(inputs - np.max(inputs, axis=-1, keepdims=True))
+        return exp / np.sum(exp, axis=-1, keepdims=True)
+
     def backward(self, delta: np.ndarray) -> None:
         """
-        Backward pass using Sigmoid. Creates gradient attribute with respect to inputs.
-
-        Parameters
-        ----------
-        delta : np.ndarray
-            Accumulated gradient obtained by backpropagation.
-
-        Returns
-        -------
-        None
+        Perform the backward pass for softmax.
         """
+        # Initialize dinputs to be of the same shape as delta
+        self.dinputs = np.empty_like(delta)
 
-        self.dinputs = np.empty_like(delta) 
+        # Get the shape of the input (abstract the first N-1 dimensions)
+        *dims, num_classes = delta.shape
+        
+        # Reshape delta and output to (batch_size * other_dims, num_classes)
+        delta_reshaped = delta.reshape(-1, num_classes)  # Flatten the first N-1 dimensions
+        output_reshaped = self.output.reshape(-1, num_classes)  # Same reshape for output
 
-        # 3D batch processing
-        if len(delta.shape) == 3:
+        # Now, for each sample (in the flattened batch), compute the Jacobian matrix.
+        # We are going to compute this efficiently by using matrix operations.
+        self.dinputs = np.empty_like(delta_reshaped)
 
-            for outer_index in range(len(delta)):
+        for i in range(delta_reshaped.shape[0]):
+            single_output = output_reshaped[i].reshape(-1, 1)  # Shape: (num_classes, 1)
+            jacobian_matrix = np.diagflat(single_output) - np.matmul(single_output, single_output.T)  # Jacobian matrix for softmax
 
-                for index, (single_output, single_delta) in enumerate(zip(self.output[outer_index], delta[outer_index])):
+            # Now compute the gradient for this particular sample
+            self.dinputs[i] = np.dot(delta_reshaped[i], jacobian_matrix)
 
-                    single_output = single_output.reshape(-1, 1)
-
-                    jacobian_matrix = np.diagflat(single_output) - np.dot(single_output, single_output.T)
-
-                    self.dinputs[outer_index][index] = np.dot(jacobian_matrix, single_delta) 
-
-        elif len(delta.shape) == 2:
-
-            for index, (single_output, single_delta) in enumerate(zip(self.output, delta)):
-
-                single_output = single_output.reshape(-1, 1)
-
-                jacobian_matrix = np.diagflat(single_output) - np.dot(single_output, single_output.T)
-
-                self.dinputs[index] = np.dot(jacobian_matrix, single_delta) 
+        # Reshape back to the original shape (same as delta)
+        self.dinputs = self.dinputs.reshape(*dims, num_classes)

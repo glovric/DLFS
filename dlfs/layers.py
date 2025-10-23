@@ -63,7 +63,24 @@ class DenseLayer(Layer):
         -------
         None
         """
+
+        # Way faster this way
+        *dims, n_features = delta.shape
+        delta_reshaped = delta.reshape(-1, n_features)
+
+        *input_dims, input_features = self.inputs.shape
+        inputs_reshaped = self.inputs.reshape(-1, input_features)
+
+        self.dweights = np.matmul(inputs_reshaped.T, delta_reshaped)
+        self.dbiases = np.sum(delta_reshaped, axis=0)
+        self.dinputs = np.matmul(delta_reshaped, self.weights.T)
+
+        self.dinputs = self.dinputs.reshape(*input_dims, input_features)
+
         # 2D case (n_samples, n_inputs)
+        """
+        This is the reminder of the old slow way.
+
         if len(delta.shape) == 2:
             self.dweights = np.dot(self.inputs.T, delta)
             self.dbiases = np.sum(delta, axis=0)
@@ -78,7 +95,7 @@ class DenseLayer(Layer):
             for i in range(delta.shape[0]):
                 self.dweights += np.dot(self.inputs[i].T, delta[i])
                 self.dbiases += np.sum(delta[i], axis=0)
-                self.dinputs += np.dot(delta[i], self.weights.T)
+                self.dinputs += np.dot(delta[i], self.weights.T)"""
 
     def get_parameters(self):
         param_names = ["weights", "biases"]

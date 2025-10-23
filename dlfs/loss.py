@@ -1,5 +1,6 @@
 import numpy as np
 from .base import Loss
+from .activation import Softmax
 
 class BCE_Loss(Loss):
 
@@ -99,22 +100,36 @@ class MSE_Loss(Loss):
 
 class CCE_Loss(Loss):
 
+    def __init__(self, from_logits=True):
+        self.from_logits = from_logits
+
     def calculate(self, y_pred, y_true):
-        samples = range(len(y_pred))
+
+        if self.from_logits:
+            y_pred = Softmax.calculate(y_pred)
+
+        samples = np.arange(len(y_pred))
         y_pred_clipped = np.clip(y_pred, 1e-7, 1 - 1e-7)
 
         if len(y_true.shape) == 1:
             correct_confidences = y_pred_clipped[samples, y_true]
-
         elif len(y_true.shape) == 2:
-            correct_confidences = np.sum(y_pred_clipped*y_true, axis=1)
+            correct_confidences = np.sum(y_pred_clipped * y_true, axis=1)
 
         return np.mean(-np.log(correct_confidences))
 
     def backward(self, y_pred, y_true):
+
+        if self.from_logits:
+            y_pred = Softmax.calculate(y_pred)
+
         samples = len(y_pred)
 
         if len(y_true.shape) == 1:
             y_true = np.eye(y_pred.shape[1])[y_true]
 
-        self.dinputs = (y_pred - y_true) / samples
+        if self.from_logits:
+            self.dinputs = (y_pred - y_true) / samples
+        else:
+            self.dinputs = -y_true / y_pred
+            self.dinputs = self.dinputs / samples   

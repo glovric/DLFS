@@ -114,7 +114,7 @@ class CCE_Loss(Loss):
         if len(y_true.shape) == 1:
             correct_confidences = y_pred_clipped[samples, y_true]
         elif len(y_true.shape) == 2:
-            correct_confidences = np.sum(y_pred_clipped * y_true, axis=1)
+            correct_confidences = np.sum(y_pred_clipped * y_true, axis=-1)
 
         return np.mean(-np.log(correct_confidences))
 

@@ -118,7 +118,25 @@ class CCE_Loss(Loss):
 
         return np.mean(-np.log(correct_confidences))
 
-    def backward(self, y_pred, y_true):
+    def backward(self, y_pred: np.ndarray, y_true: np.ndarray):
+        """
+        Backward pass for Categorical Cross Entropy loss. Computes the gradients
+        of the loss with respect to the model's predictions.
+
+        Parameters
+        ----------
+        y_pred : np.ndarray
+            The predicted values from the model (logits) of shape (batch_size, num_classes).
+        
+        y_true : np.ndarray
+            The true labels, either as class indices of shape (batch_size, ) or one-hot encoded labels (2D array).
+            Shape: (batch_size,) for class indices or (batch_size, num_classes) for one-hot labels.
+
+        Notes
+        -----
+        - If `y_true` is provided as class indices of shape (batch_size, ), the method will one-hot encode it.
+        - If `from_logits=True`, softmax is applied to the `y_pred` values before calculating the gradients.
+        """
 
         if self.from_logits:
             y_pred = Softmax.calculate(y_pred)
@@ -132,4 +150,4 @@ class CCE_Loss(Loss):
             self.dinputs = (y_pred - y_true) / samples
         else:
             self.dinputs = -y_true / y_pred
-            self.dinputs = self.dinputs / samples   
+            self.dinputs = self.dinputs / samples

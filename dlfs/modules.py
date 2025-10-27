@@ -171,70 +171,6 @@ class LSTM(Module):
 
         self.dinputs = self.lstm_layers[0].dinputs
 
-class Block(Module):
-    def __init__(self, n_embed, n_head, block_size, dropout=0.1):
-        head_size = n_embed // n_head
-        self.sa = MultiHeadAttention(n_heads=n_head, head_size=head_size, n_embed=n_embed, block_size=block_size, dropout=dropout)
-        self.ffwd = FeedForward(n_embed, dropout)
-        self.ln1 = LayerNorm(n_embed)
-        self.ln2 = LayerNorm(n_embed)
-    def forward(self, x, training=False):
-        self.ln1.forward(x)
-        self.sa.forward(self.ln1.output, training)
-        x = x + self.sa.output
-        self.ln2.forward(x)
-        self.ffwd.forward(self.ln2.output, training)
-        x = x + self.ffwd.output
-        self.output = x
-
-    def backward(self, delta):
-
-        dx = delta
-        dffwd = dx  # Gradient to pass to the FeedForward layer
-        
-        self.ffwd.backward(dffwd)
-
-        self.ln2.backward(dx)
-        dln2 = self.ln2.dinputs
-        
-        dsa = dln2  # Gradient to pass to MultiHeadAttention
-        
-        self.sa.backward(dsa)
-        
-        self.ln1.backward(dsa)
-
-        self.dinputs = self.ln1.dinputs
-
-class TransformerDecoder(Module):
-
-    def __init__(self, n_embed, n_head, block_size, n_layers: int = 1, dropout=0.1) -> None:
-        if n_layers == 1:
-            self.blocks = [Block(n_embed, n_head, block_size, dropout)]
-        else:
-            self.blocks = [Block(n_embed, n_head, block_size, dropout) for _ in range(n_layers)]
-
-    def forward(self, inputs: np.ndarray, training=False) -> None:
-
-        # Pass data to the first LSTM layer
-        self.blocks[0].forward(inputs, training)
-
-        # Forward hidden states of the previous LSTM layer to the current one
-        for idx, layer in enumerate(self.blocks[1:], start=1):
-            layer.forward(self.blocks[idx - 1].output, training)
-
-        # Output of the LSTM is the final LSTM layer's output
-        self.output = self.blocks[-1].output.copy()
-
-    def backward(self, delta: np.ndarray) -> None:
-
-        self.blocks[-1].backward(delta)
-
-        for idx, layer in reversed(list(enumerate(self.blocks[:-1]))):
-            layer.backward(self.blocks[idx + 1].dinputs)
-
-        self.dinputs = self.blocks[0].dinputs
-
-
 class SingleAttentionHead(Module):
 
     def __init__(self, input_size, head_size, dropout=0.1, use_mask=False):
@@ -463,85 +399,17 @@ class TransformerEncoderBlock(Module):
         self.ln1.backward(self.mha.dinputs)
         self.dinputs = self.ln1.dinputs
 
-class Transformer(Module):
-
-    def __init__(self, d_model=512, n_head = 4, n_enc_layers=2, n_dec_layers=2, dim_ff=2048, 
-                       dropout=0.1, activation=ReLU(), layer_norm_eps=1e-5):
-    
-        self.encoder_layers = [TransformerEncoderBlock(d_model=d_model, 
-                                                n_head=n_head, 
-                                                dim_ff=dim_ff, 
-                                                dropout=dropout, 
-                                                layer_norm_eps=layer_norm_eps) for _ in range(n_enc_layers)]
-
-        self.decoder_layers = [TransformerDecoderBlock(d_model=d_model, 
-                                                n_head=n_head, 
-                                                dim_ff=dim_ff, 
-                                                dropout=dropout, 
-                                                layer_norm_eps=layer_norm_eps) for _ in range(n_dec_layers)]
-
-    def _encoder_forward(self, inputs_enc, training=False):
-        self.encoder_layers[0].forward(inputs_enc, training)
-        for idx, enc in enumerate(self.encoder_layers[1:], start=1):
-            enc.forward(self.encoder_layers[idx-1].output, training)
-        self.encoder_output = self.encoder_layers[-1].output
-
-    def _decoder_forward(self, inputs_dec, outputs_enc, training=False):
-        self.decoder_layers[0].forward(inputs_dec, outputs_enc, training)
-        for idx, dec in enumerate(self.decoder_layers[1:], start=1):
-            dec.forward(self.decoder_layers[idx-1].output, self.encoder_layers[-1].output, training)
-        self.decoder_output = self.decoder_layers[-1].output
-
-    def _encoder_backward(self, delta):
-        self.encoder_layers[-1].backward(delta)
-        for idx, enc in reversed(list(enumerate(self.encoder_layers[:-1]))):
-            enc.backward(self.encoder_layers[idx + 1].dinputs)
-        self.encoder_dinputs = self.encoder_layers[0].dinputs
-
-    def _decoder_backward(self, delta):
-        self.decoder_layers[-1].backward(delta)
-        for idx, dec in reversed(list(enumerate(self.decoder_layers[:-1]))):
-            dec.backward(self.decoder_layers[idx + 1].dinputs)
-        self.decoder_dinputs = self.decoder_layers[0].dinputs
-        
-        grad_wrt_encoder_output_total = np.zeros_like(self.decoder_layers[0].output)
-        for idx, dec in enumerate(self.decoder_layers):
-            grad_wrt_encoder_output_total += dec.grad_wrt_encoder_output
-
-        self.grad_wrt_encoder_output_total = grad_wrt_encoder_output_total
-        
-    def forward(self, inputs_enc, inputs_dec, training=False):
-        self._encoder_forward(inputs_enc, training)
-        self._decoder_forward(inputs_dec, self.encoder_output, training)
-        self.output = self.decoder_output
-
-    def backward(self, delta):
-        self._decoder_backward(delta)
-        self._encoder_backward(self.grad_wrt_encoder_output_total)
-
-    def _print_grad_norms(self):
-        print(f'-------------------GRADS------------------')
-        for i in range(len(self.decoder_layers)):
-            print(f'Decoder ffwd {i}: {np.linalg.norm(self.decoder_layers[i].ffwd.dinputs)}')
-            print(f'Decoder cross MHA {i}: {np.linalg.norm(self.decoder_layers[i].cross_mha.dinputs_query)} | {np.linalg.norm(self.decoder_layers[i].cross_mha.dinputs_context)}')
-            print(f'Decoder mask MHA {i}: {np.linalg.norm(self.decoder_layers[i].mask_mha.dinputs)}')
-            print(f'Decoder grad for encoder {i}: {np.linalg.norm(self.decoder_layers[i].grad_wrt_encoder_output)}')
-        for i in range(len(self.encoder)):
-            print(f'Encoder ffwd {i}: {np.linalg.norm(self.encoder_layers[i].ffwd.dinputs)}')
-            print(f'Encoder MHA {i}: {np.linalg.norm(self.encoder_layers[i].mha.dinputs_query)} | {np.linalg.norm(self.encoder_layers[i].mha.dinputs_context)}')
-            print(f'Encoder dipnuts {i}: {np.linalg.norm(self.encoder_layers[i].dinputs)}')
-        print(f'------------------------------------------')
-
 class TransformerEncoder(Module):
 
     def __init__(self, d_model=512, n_head = 4, n_enc_layers=2, dim_ff=2048, 
                     dropout=0.1, activation=ReLU(), layer_norm_eps=1e-5):
 
         self.encoder_layers = [TransformerEncoderBlock(d_model=d_model, 
-                                                    n_head=n_head, 
-                                                    dim_ff=dim_ff, 
-                                                    dropout=dropout, 
-                                                    layer_norm_eps=layer_norm_eps) for _ in range(n_enc_layers)]
+                                                       n_head=n_head, 
+                                                       dim_ff=dim_ff, 
+                                                       dropout=dropout, 
+                                                       activation=activation,
+                                                       layer_norm_eps=layer_norm_eps) for _ in range(n_enc_layers)]
         
     def forward(self, inputs_enc, training=False):
         self.encoder_layers[0].forward(inputs_enc, training)
@@ -563,13 +431,14 @@ class TransformerDecoder(Module):
         self.decoder_layers = [TransformerDecoderBlock(d_model=d_model, 
                                                        n_head=n_head, 
                                                        dim_ff=dim_ff, 
-                                                       dropout=dropout, 
+                                                       dropout=dropout,
+                                                       activation=activation, 
                                                        layer_norm_eps=layer_norm_eps) for _ in range(n_dec_layers)]
         
-    def forward(self, inputs_dec, training=False):
-        self.decoder_layers[0].forward(inputs_dec, training=training)
+    def forward(self, dec_input, enc_output=None, training=False):
+        self.decoder_layers[0].forward(dec_input, enc_output=enc_output, training=training)
         for idx, dec in enumerate(self.decoder_layers[1:], start=1):
-            dec.forward(self.decoder_layers[idx-1].output, training=training)
+            dec.forward(self.decoder_layers[idx-1].output, enc_output=enc_output, training=training)
         self.output = self.decoder_layers[-1].output
 
     def backward(self, delta):
@@ -577,3 +446,56 @@ class TransformerDecoder(Module):
         for idx, dec in reversed(list(enumerate(self.decoder_layers[:-1]))):
             dec.backward(self.decoder_layers[idx + 1].dinputs)
         self.dinputs = self.decoder_layers[0].dinputs
+
+class Transformer(Module):
+
+    def __init__(self, d_model=512, n_head = 4, n_enc_layers=2, n_dec_layers=2, dim_ff=2048, 
+                       dropout=0.1, activation=ReLU(), layer_norm_eps=1e-5):
+    
+        self.encoder = TransformerEncoder(d_model=d_model,
+                                          n_head=n_head,
+                                          n_enc_layers=n_enc_layers,
+                                          dim_ff=dim_ff,
+                                          dropout=dropout,
+                                          activation=activation,
+                                          layer_norm_eps=layer_norm_eps)
+
+        self.decoder = TransformerDecoder(d_model=d_model,
+                                          n_head=n_head,
+                                          n_dec_layers=n_dec_layers,
+                                          dim_ff=dim_ff,
+                                          dropout=dropout,
+                                          activation=activation,
+                                          layer_norm_eps=layer_norm_eps)
+
+    def _decoder_backward(self, delta):
+        self.decoder.backward(delta)
+
+        # Gradient for encoder comes from decoder    
+        grad_wrt_encoder_output_total = np.zeros_like(self.decoder.output)
+        for idx, dec in enumerate(self.decoder.decoder_layers):
+            grad_wrt_encoder_output_total += dec.grad_wrt_encoder_output
+
+        self.grad_wrt_encoder_output_total = grad_wrt_encoder_output_total
+        
+    def forward(self, inputs_enc, inputs_dec, training=False):
+        self.encoder.forward(inputs_enc, training)
+        self.decoder.forward(inputs_dec, self.encoder.output, training)
+        self.output = self.decoder.output
+
+    def backward(self, delta):
+        self._decoder_backward(delta)
+        self.encoder.backward(self.grad_wrt_encoder_output_total)
+
+    def _print_grad_norms(self):
+        print(f'-------------------GRADS------------------')
+        for i in range(len(self.decoder_layers)):
+            print(f'Decoder ffwd {i}: {np.linalg.norm(self.decoder_layers[i].ffwd.dinputs)}')
+            print(f'Decoder cross MHA {i}: {np.linalg.norm(self.decoder_layers[i].cross_mha.dinputs_query)} | {np.linalg.norm(self.decoder_layers[i].cross_mha.dinputs_context)}')
+            print(f'Decoder mask MHA {i}: {np.linalg.norm(self.decoder_layers[i].mask_mha.dinputs)}')
+            print(f'Decoder grad for encoder {i}: {np.linalg.norm(self.decoder_layers[i].grad_wrt_encoder_output)}')
+        for i in range(len(self.encoder)):
+            print(f'Encoder ffwd {i}: {np.linalg.norm(self.encoder_layers[i].ffwd.dinputs)}')
+            print(f'Encoder MHA {i}: {np.linalg.norm(self.encoder_layers[i].mha.dinputs_query)} | {np.linalg.norm(self.encoder_layers[i].mha.dinputs_context)}')
+            print(f'Encoder dipnuts {i}: {np.linalg.norm(self.encoder_layers[i].dinputs)}')
+        print(f'------------------------------------------')

@@ -173,7 +173,24 @@ class LSTM(Module):
 
 class SingleAttentionHead(Module):
 
-    def __init__(self, input_size, head_size, dropout=0.1, use_mask=False):
+    def __init__(self, input_size: int, head_size: int, dropout=0.1, use_mask=False) -> None:
+        """
+        A single head of attention for computing the attention mechanism in models like Transformers.
+
+        Parameters
+        ----------
+        input_size : int
+            The size of the input features. This is the dimension of the input to the attention mechanism (token embedding size).
+            
+        head_size : int
+            The size of each attention head, dimensionality of the query, key, and value vectors.
+            
+        dropout : float, optional, default=0.1
+            The dropout rate applied to the attention weights during training.
+            
+        use_mask : bool, optional, default=False
+            If True, applies a mask to ensure that the attention mechanism cannot attend to future tokens.
+        """
         self.key = DenseLayer(input_size, head_size)
         self.query = DenseLayer(input_size, head_size)
         self.value = DenseLayer(input_size, head_size)
@@ -183,8 +200,30 @@ class SingleAttentionHead(Module):
         self.normalize_factor = head_size**0.5
         self.use_mask = use_mask
 
-    def forward(self, query_input, context_input, training):
+    def forward(self, query_input: np.ndarray, context_input: np.ndarray, training: bool = False) -> None:
+        """
+        Forward pass for the Single Attention Head. Creates output attribute.
 
+        Parameters
+        ----------
+        query_input : np.ndarray
+            Input array of shape `(batch_size, seq_len, input_size)` used in computing query matrix.
+
+        context_input : np.ndarray
+            Input array of shape `(batch_size, seq_len, input_size)` used in computing key and value matrices.
+            In self-attention, this array will be the same as `query_input`, but in encoder-decoder cross-attention, 
+            the `context_input` comes from the encoder.
+
+        training : bool, default=False
+            A flag indicating whether the model is in training mode. If True, dropout is applied to the attention
+            weights.
+
+        Returns
+        -------
+        None
+        """
+
+        # Compute Q, K and V matrices
         self.query.forward(query_input)
         self.key.forward(context_input)
         self.value.forward(context_input)
@@ -193,22 +232,41 @@ class SingleAttentionHead(Module):
         self.k = self.key.output
         self.v = self.value.output
         
+        # Compute similarity scores (unnormalized attention scores) between all vector pairs of Q and K 
         self.w = np.matmul(self.q, self.k.swapaxes(-2, -1)) / self.normalize_factor
 
         if self.use_mask:
             B, T, _ = self.q.shape
-            mask = np.tril(np.ones((T, T), dtype=bool))  # causal mask
+            # Create lower triangular mask matrix
+            mask = np.tril(np.ones((T, T), dtype=bool))
+            # Apply mask to future tokens
             self.w = np.where(mask[None, :, :], self.w, -np.inf)
 
-
+        # Compute attention scores
         self.softmax.forward(self.w)
         self.w = self.softmax.output
         self.attn_weights = self.softmax.output.copy()
+
+        # Add dropout
         self.dropout.forward(self.w, training)
         self.w = self.dropout.output
+
+        # Compute final output
         self.output = np.matmul(self.w, self.v)
 
-    def backward(self, delta):
+    def backward(self, delta: np.ndarray) -> None:
+        """
+        Backward pass for the Single Attention Head. Creates dinputs gradient attributes.
+
+        Parameters
+        ----------
+        delta : np.ndarray
+            Gradient array of shape `(batch_size, seq_len, head_size)` used in computing query matrix.
+
+        Returns
+        -------
+        None
+        """
         d_w = np.matmul(delta, self.v.swapaxes(-2, -1))
 
         self.dropout.backward(d_w)

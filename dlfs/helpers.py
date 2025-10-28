@@ -75,3 +75,25 @@ def timeit(name):
         return decorator
     
     return timed
+
+def get_random_batch(*data: tuple[np.ndarray, ...], batch_size: int):
+    """
+    Sample a random batch of data from the provided input arrays.
+
+    Parameters
+    ----------
+    *data : tuple[np.ndarray, ...]
+        One or more input arrays from which to sample the batch. Each array must 
+        have the same number of samples, `(num_samples, d1, ..., dN)`
+        
+    batch_size : int
+        The number of samples to include in the batch.
+
+    Returns
+    -------
+    tuple : tuple[np.ndarray, ...]
+        A tuple containing the random batch of samples from each input array of shape `(batch_size, d1, ..., dN)`
+    """
+    # Generate random sample indices
+    idx = np.random.randint(len(data[0]), size=(batch_size, ))
+    return tuple(d[idx] for d in data)

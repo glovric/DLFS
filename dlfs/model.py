@@ -225,7 +225,7 @@ class TransformerDecoderModel(Module):
         dropout : float, default=0.1
             The dropout rate applied to layers during training to help prevent overfitting.
 
-        activation : Activation, default=ReLU()
+        activation : Activation, default=ReLU
             The activation function used in the feedforward layers.
 
         layer_norm_eps : float, default=1e-5

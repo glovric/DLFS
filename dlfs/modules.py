@@ -793,7 +793,7 @@ class TransformerDecoder(Module):
                                                        activation=activation, 
                                                        layer_norm_eps=layer_norm_eps) for _ in range(n_dec_layers)]
         
-    def forward(self, x: np.ndarry, enc_output: np.ndarray = None, training: bool = False) -> None:
+    def forward(self, x: np.ndarray, enc_output: np.ndarray = None, training: bool = False) -> None:
         """
         Forward pass for the TransformerDecoder. Creates output attribute.
 

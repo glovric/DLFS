@@ -1,7 +1,7 @@
 import numpy as np
-from .base import Module
+from .base import Module, Activation
 from .layers import *
-from .activation import Softmax, ReLU, GELU
+from .activation import Softmax, ReLU
 
 class RNN(Module):
 
@@ -294,7 +294,28 @@ class SingleAttentionHead(Module):
 
 class MultiHeadAttention(Module):
 
-    def __init__(self, n_embed, n_heads, dropout=0.1, use_mask=False):
+    def __init__(self, n_embed: int, n_heads: int, dropout: float = 0.1, use_mask: bool = False) -> None:
+        """
+        Multi Head Attention module which consists of multiple `SingleAttentionHead` objects.
+
+        Parameters
+        ----------
+        n_embed : int
+            Dimensionality of input embeddings.
+
+        n_heads : int
+            Number of single attention heads to create in the module.
+            `n_embed` must be divisible by this number.
+
+        dropout : float, default=0.1
+            The dropout rate applied to the attention weights during training.
+            
+        use_mask : bool, optional, default=False
+            If True, applies a mask to ensure that the attention mechanism cannot attend to future tokens.
+        """
+        # Assertion to ensure n_embed is divisible by n_heads
+        assert n_embed % n_heads == 0, f"n_embed ({n_embed}) must be divisible by n_heads ({n_heads})."
+
         self.n_heads = n_heads
         self.head_size = n_embed // n_heads
 
@@ -307,22 +328,58 @@ class MultiHeadAttention(Module):
 
         self.dropout = DropoutLayer(dropout)
 
-    def forward(self, x, training, context=None):
-        self.is_cross_attention = context is not None
-        if context is None:
-            context = x
+    def forward(self, query_input: np.ndarray, context_input: np.ndarray = None, training: bool = False) -> None:
+        """
+        Forward pass for the MultiHeadAttention. Creates output attribute.
+
+        Parameters
+        ----------
+        query_input : np.ndarray
+            Input array of shape `(batch_size, seq_len, input_size)` used in computing query matrix.
+
+        context_input : np.ndarray
+            Input array of shape `(batch_size, seq_len, input_size)` used in computing key and value matrices.
+            In self-attention, this array will be the same as `query_input`, but in encoder-decoder cross-attention, 
+            the `context_input` comes from the encoder.
+
+        training : bool, default=False
+            A flag indicating whether the model is in training mode. If True, dropout is applied to the attention
+            weights.
+
+        Returns
+        -------
+        None
+        """
+        # Check if context_input is given
+        self.is_cross_attention = context_input is not None
+        if context_input is None:
+            # If there is no context input, query input gets passed to heads twice
+            context_input = query_input
 
         head_outputs = []
         for i, head in enumerate(self.attention_heads):
-            head.forward(x, context, training)
+            head.forward(query_input, context_input, training)
             head_outputs.append(head.output)
 
+        # Concatenate head results
         concatenated_output = np.concatenate(head_outputs, axis=-1)
         self.output_dense.forward(concatenated_output)
         self.dropout.forward(self.output_dense.output, training)
         self.output = self.dropout.output
 
-    def backward(self, delta):
+    def backward(self, delta: np.ndarray) -> None:
+        """
+        Backward pass for the MultiHeadAttention. Creates dinputs gradient attributes.
+
+        Parameters
+        ----------
+        delta : np.ndarray
+            Gradient array of shape `(batch_size, seq_len, input_size)`.
+
+        Returns
+        -------
+        None
+        """
 
         self.dropout.backward(delta)
 
@@ -344,23 +401,54 @@ class MultiHeadAttention(Module):
             self.dinputs_query += self.attention_heads[i].dinputs_query
             self.dinputs_context += self.attention_heads[i].dinputs_context
 
-        #self.dinputs_query /= self.n_heads
-        #self.dinputs_context /= self.n_heads
-
         if self.is_cross_attention:
             self.dinputs = None
         else:
             self.dinputs = self.dinputs_query + self.dinputs_context
 
 class FeedForward(Module):
-    def __init__(self, d_model=512, hidden_dim=2048, dropout=0.1, activation=ReLU()):
+
+    def __init__(self, d_model: int, hidden_dim: int = 2048, dropout: float = 0.1, activation: Activation = ReLU) -> None:
+        """
+        FeedForward network used in Transformer architectures.
+
+        Parameters
+        ----------
+        d_model : int
+            The dimensionality of the input and output embeddings. It should match dimension of MultiHeadAttention
+            or other modules preceeding FeedForward.
+
+        hidden_dim : int, default=2048
+            The dimensionality of the hidden layer in the FeedForward network.
+
+        dropout : float, default=0.1
+            The dropout rate applied to the outputs during training.
+
+        activation : Activation, default=ReLU
+            The activation function applied after the first fully connected layer.
+        """
         self.fc1 = DenseLayer(d_model, hidden_dim)
-        self.activation = activation
+        self.activation = activation()
         self.dropout1 = DropoutLayer(dropout)
         self.fc2 = DenseLayer(hidden_dim, d_model)
         self.dropout2 = DropoutLayer(dropout)
 
-    def forward(self, inputs, training):
+    def forward(self, inputs: np.ndarray, training: bool = False) -> None:
+        """
+        Forward pass for the FeedForward network. Creates output attribute.
+
+        Parameters
+        ----------
+        inputs : np.ndarray
+            Input array of shape `(batch_size, seq_len, d_model)` used in computing query matrix.
+
+        training : bool, default=False
+            A flag indicating whether the model is in training mode. If True, dropout is applied to outputs.
+
+        Returns
+        -------
+        None
+        """
         self.fc1.forward(inputs)
         self.activation.forward(self.fc1.output)
         self.dropout1.forward(self.activation.output, training)
@@ -368,7 +456,19 @@ class FeedForward(Module):
         self.dropout2.forward(self.fc2.output, training)
         self.output = self.dropout2.output
 
-    def backward(self, delta):
+    def backward(self, delta: np.ndarray) -> None:
+        """
+        Backward pass for the FeedForward. Creates dinputs gradient attributes.
+
+        Parameters
+        ----------
+        delta : np.ndarray
+            Gradient array of shape `(batch_size, seq_len, d_model)`.
+
+        Returns
+        -------
+        None
+        """
         self.dropout2.backward(delta)
         self.fc2.backward(self.dropout2.dinputs)
         self.dropout1.backward(self.fc2.dinputs)
@@ -378,7 +478,34 @@ class FeedForward(Module):
         
 class TransformerDecoderBlock(Module):
     
-    def __init__(self, d_model=512, n_head=4, dim_ff=2048, dropout=0.1, activation=ReLU(), layer_norm_eps=1e-5):
+    def __init__(self, d_model: int, n_head: int, dim_ff: int = 2048, dropout: float = 0.1, 
+                 activation: Activation = ReLU, layer_norm_eps: float = 1e-5) -> None:
+        """
+        Transformer Decoder block as presented in the paper 'Attention is all you need' by Vaswani et al. (2017).
+        Consists of Masked Multi-Head Attention, Cross Attention, Feed Forward and LayerNorm modules.
+        This implementation uses pre-ln (LayerNorm applied first).
+
+        Parameters
+        ----------
+        d_model : int
+            Dimensionality of input embeddings.
+
+        n_heads : int
+            Number of heads to create in the MultiHeadAttention modules.
+            `d_model` must be divisible by this number.
+
+        dim_ff : int, default=2048
+            The dimensionality of the hidden layer in the FeedForward module.
+
+        dropout : float, default=0.1
+            The dropout rate applied to module outputs during training.
+
+        activation : Activation, default=ReLU
+            The activation function applied in the FeedForward module.
+
+        layer_norm_eps : float, default=1e-5
+            A small value added to the denominator for numerical stability when performing layer normalization. 
+        """
         self.mask_mha = MultiHeadAttention(d_model, n_head, dropout=dropout, use_mask=True)
         self.ln1 = LayerNorm(d_model, epsilon=layer_norm_eps)
 
@@ -388,28 +515,58 @@ class TransformerDecoderBlock(Module):
         self.ffwd = FeedForward(d_model, hidden_dim=dim_ff, dropout=dropout, activation=activation)
         self.ln3 = LayerNorm(d_model, epsilon=layer_norm_eps)
 
-    def forward(self, x, enc_output=None, training=False):
-        self.ln1.forward(x, training)
-        self.mask_mha.forward(self.ln1.output, training)
+    def forward(self, x: np.ndarray, enc_output: np.ndarray = None, training: bool = False) -> None:
+        """
+        Forward pass for the TransformerDecoderBlock. Creates output attribute.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Input array of shape `(batch_size, seq_len, d_model)`.
+
+        enc_output : np.ndarray, default=None
+            Encoder output array used in cross attention of shape `(batch_size, seq_len, d_model)`. Used only in encoder-decoder scenario.
+
+        training : bool, default=False
+            A flag indicating whether the model is in training mode. If True, dropout is applied to outputs.
+
+        Returns
+        -------
+        None
+        """
+        self.ln1.forward(x, training=training)
+        self.mask_mha.forward(self.ln1.output, training=training)
         x = x + self.mask_mha.output
 
         if enc_output is not None:
             self.has_cross_attn = True
-            self.ln2.forward(x, training)
-            self.cross_mha.forward(self.ln2.output, training, context=enc_output)
+            self.ln2.forward(x, training=training)
+            self.cross_mha.forward(self.ln2.output, enc_output, training=training)
             x = x + self.cross_mha.output  # Residual connection
         else:
             self.has_cross_attn = False
             self.cross_mha = None
             self.ln2 = None
 
-        self.ln3.forward(x, training)
-        self.ffwd.forward(self.ln3.output, training)
+        self.ln3.forward(x, training=training)
+        self.ffwd.forward(self.ln3.output, training=training)
         x = x + self.ffwd.output
 
         self.output = x
 
-    def backward(self, delta):
+    def backward(self, delta: np.ndarray) -> None:
+        """
+        Backward pass for the TransformerDecoderBlock. Creates dinputs gradient attribute.
+
+        Parameters
+        ----------
+        delta : np.ndarray
+            Gradient array of shape `(batch_size, seq_len, d_model)`.
+
+        Returns
+        -------
+        None
+        """
         self.ln3.backward(delta)
         self.ffwd.backward(self.ln3.dinputs)
         d_after_ffwd = delta + self.ffwd.dinputs
@@ -429,25 +586,80 @@ class TransformerDecoderBlock(Module):
         self.dinputs = self.mask_mha.dinputs
 
 class TransformerEncoderBlock(Module):
-    def __init__(self, d_model=512, n_head=4, dim_ff=2048, dropout=0.1, activation=ReLU(), layer_norm_eps=1e-5):
+
+    def __init__(self, d_model: int, n_head: int, dim_ff: int = 2048, dropout: float = 0.1, 
+                 activation: Activation = ReLU, layer_norm_eps: float = 1e-5) -> None:
+        """
+        Transformer Encoder block as presented in the paper 'Attention is all you need' by Vaswani et al. (2017).
+        Consists of Multi-Head Attention, Feed Forward and LayerNorm modules.
+        This implementation uses pre-ln (LayerNorm applied first).
+
+        Parameters
+        ----------
+        d_model : int
+            Dimensionality of input embeddings.
+
+        n_head : int
+            Number of heads to create in the MultiHeadAttention modules.
+            `d_model` must be divisible by this number.
+
+        dim_ff : int, default=2048
+            The dimensionality of the hidden layer in the FeedForward module.
+
+        dropout : float, default=0.1
+            The dropout rate applied to module outputs during training.
+
+        activation : Activation, default=ReLU
+            The activation function applied in the FeedForward module.
+
+        layer_norm_eps : float, default=1e-5
+            A small value added to the denominator for numerical stability when performing layer normalization. 
+        """
         self.mha = MultiHeadAttention(d_model, n_head, dropout=dropout, use_mask=False)
         self.ln1 = LayerNorm(d_model, epsilon=layer_norm_eps)
 
         self.ffwd = FeedForward(d_model, hidden_dim=dim_ff, dropout=dropout, activation=activation)
         self.ln2 = LayerNorm(d_model, epsilon=layer_norm_eps)
 
-    def forward(self, x, training):
-        self.ln1.forward(x, training)
-        self.mha.forward(self.ln1.output, training)
+    def forward(self, x: np.ndarray, training: bool = False) -> None:
+        """
+        Forward pass for the TransformerEncoderBlock. Creates output attribute.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Input array of shape `(batch_size, seq_len, d_model)`.
+
+        training : bool, default=False
+            A flag indicating whether the model is in training mode. If True, dropout is applied to outputs.
+
+        Returns
+        -------
+        None
+        """
+        self.ln1.forward(x, training=training)
+        self.mha.forward(self.ln1.output, training=training)
         x = x + self.mha.output
 
-        self.ln2.forward(x, training)
-        self.ffwd.forward(self.ln2.output, training)
+        self.ln2.forward(x, training=training)
+        self.ffwd.forward(self.ln2.output, training=training)
         x = x + self.ffwd.output
 
         self.output = x
 
-    def backward(self, delta):
+    def backward(self, delta: np.ndarray) -> None:
+        """
+        Backward pass for the TransformerEncoderBlock. Creates dinputs gradient attribute.
+
+        Parameters
+        ----------
+        delta : np.ndarray
+            Gradient array of shape `(batch_size, seq_len, d_model)`.
+
+        Returns
+        -------
+        None
+        """
         d_ffn_residual = delta
         self.ffwd.backward(d_ffn_residual)
         self.ln2.backward(self.ffwd.dinputs)
@@ -459,9 +671,39 @@ class TransformerEncoderBlock(Module):
 
 class TransformerEncoder(Module):
 
-    def __init__(self, d_model=512, n_head = 4, n_enc_layers=2, dim_ff=2048, 
-                    dropout=0.1, activation=ReLU(), layer_norm_eps=1e-5):
+    def __init__(self, d_model: int, n_head: int, n_enc_layers: int = 2, dim_ff: int = 2048, 
+                    dropout: float = 0.1, activation: Activation = ReLU, layer_norm_eps: float = 1e-5) -> None:
+        """
+        Stack of Transformer Encoder blocks. 
 
+        Parameters
+        ----------
+        d_model : int
+            Dimensionality of input embeddings.
+
+        n_head : int
+            Number of heads to create in the MultiHeadAttention modules.
+            `d_model` must be divisible by this number.
+
+        n_enc_layers : int, default=2
+            The number of layers in the Transformer encoder.
+
+        dim_ff : int, default=2048
+            The dimensionality of the feedforward layers in the TransformerEncoderBlock.
+
+        dropout : float, default=0.1
+            The dropout rate applied to module outputs during training.
+
+        activation : Activation, default=ReLU
+            The activation function used in the feedforward layers.
+
+        layer_norm_eps : float, default=1e-5
+            A small value added to the denominator for numerical stability when performing layer normalization.
+
+        Returns
+        -------
+        None
+        """
         self.encoder_layers = [TransformerEncoderBlock(d_model=d_model, 
                                                        n_head=n_head, 
                                                        dim_ff=dim_ff, 
@@ -469,13 +711,40 @@ class TransformerEncoder(Module):
                                                        activation=activation,
                                                        layer_norm_eps=layer_norm_eps) for _ in range(n_enc_layers)]
         
-    def forward(self, inputs_enc, training=False):
-        self.encoder_layers[0].forward(inputs_enc, training)
+    def forward(self, x: np.ndarray, training: bool = False) -> None:
+        """
+        Forward pass for the TransformerEncoder. Creates output attribute.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Input array of shape `(batch_size, seq_len, d_model)`.
+
+        training : bool, default=False
+            A flag indicating whether the model is in training mode. If True, dropout is applied to outputs.
+
+        Returns
+        -------
+        None
+        """
+        self.encoder_layers[0].forward(x, training)
         for idx, enc in enumerate(self.encoder_layers[1:], start=1):
             enc.forward(self.encoder_layers[idx-1].output, training)
         self.output = self.encoder_layers[-1].output
 
-    def backward(self, delta):
+    def backward(self, delta: np.ndarray) -> None:
+        """
+        Backward pass for the TransformerEncoder. Creates dinputs gradient attribute.
+
+        Parameters
+        ----------
+        delta : np.ndarray
+            Gradient array of shape `(batch_size, seq_len, d_model)`.
+
+        Returns
+        -------
+        None
+        """
         self.encoder_layers[-1].backward(delta)
         for idx, enc in reversed(list(enumerate(self.encoder_layers[:-1]))):
             enc.backward(self.encoder_layers[idx + 1].dinputs)
@@ -483,8 +752,39 @@ class TransformerEncoder(Module):
 
 class TransformerDecoder(Module):
 
-    def __init__(self, d_model=512, n_head = 4, n_dec_layers=2, dim_ff=2048, 
-                    dropout=0.1, activation=ReLU(), layer_norm_eps=1e-5):
+    def __init__(self, d_model: int, n_head: int, n_dec_layers: int = 2, dim_ff: int = 2048, 
+                    dropout: float = 0.1, activation: Activation = ReLU, layer_norm_eps: float = 1e-5) -> None:
+        """
+        Stack of Transformer Decoder blocks. 
+
+        Parameters
+        ----------
+        d_model : int
+            Dimensionality of input embeddings.
+
+        n_head : int
+            Number of heads to create in the MultiHeadAttention modules.
+            `d_model` must be divisible by this number.
+
+        n_dec_layers : int, default=2
+            The number of layers in the Transformer decoder.
+
+        dim_ff : int, default=2048
+            The dimensionality of the feedforward layers in the TransformerDecoderBlock.
+
+        dropout : float, default=0.1
+            The dropout rate applied to module outputs during training.
+
+        activation : Activation, default=ReLU
+            The activation function used in the feedforward layers.
+
+        layer_norm_eps : float, default=1e-5
+            A small value added to the denominator for numerical stability when performing layer normalization.
+
+        Returns
+        -------
+        None
+        """
 
         self.decoder_layers = [TransformerDecoderBlock(d_model=d_model, 
                                                        n_head=n_head, 
@@ -493,13 +793,43 @@ class TransformerDecoder(Module):
                                                        activation=activation, 
                                                        layer_norm_eps=layer_norm_eps) for _ in range(n_dec_layers)]
         
-    def forward(self, dec_input, enc_output=None, training=False):
-        self.decoder_layers[0].forward(dec_input, enc_output=enc_output, training=training)
+    def forward(self, x: np.ndarry, enc_output: np.ndarray = None, training: bool = False) -> None:
+        """
+        Forward pass for the TransformerDecoder. Creates output attribute.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Input array of shape `(batch_size, seq_len, d_model)`.
+
+        enc_output : np.ndarray, default=None
+            Encoder output array used in cross attention of shape `(batch_size, seq_len, d_model)`. Used only in encoder-decoder scenario.
+
+        training : bool, default=False
+            A flag indicating whether the model is in training mode. If True, dropout is applied to outputs.
+
+        Returns
+        -------
+        None
+        """
+        self.decoder_layers[0].forward(x, enc_output=enc_output, training=training)
         for idx, dec in enumerate(self.decoder_layers[1:], start=1):
             dec.forward(self.decoder_layers[idx-1].output, enc_output=enc_output, training=training)
         self.output = self.decoder_layers[-1].output
 
-    def backward(self, delta):
+    def backward(self, delta: np.ndarray) -> None:
+        """
+        Backward pass for the TransformerDecoder. Creates dinputs gradient attribute.
+
+        Parameters
+        ----------
+        delta : np.ndarray
+            Gradient array of shape `(batch_size, seq_len, d_model)`.
+
+        Returns
+        -------
+        None
+        """
         self.decoder_layers[-1].backward(delta)
         for idx, dec in reversed(list(enumerate(self.decoder_layers[:-1]))):
             dec.backward(self.decoder_layers[idx + 1].dinputs)
@@ -507,41 +837,116 @@ class TransformerDecoder(Module):
 
 class Transformer(Module):
 
-    def __init__(self, d_model=512, n_head = 4, n_enc_layers=2, n_dec_layers=2, dim_ff=2048, 
-                       dropout=0.1, activation=ReLU(), layer_norm_eps=1e-5):
-    
+    def __init__(self, d_model: int, n_head: int, n_enc_layers: int = 2, n_dec_layers: int = 2, dim_ff: int = 2048, 
+                    dropout: float = 0.1, activation: Activation = ReLU, layer_norm_eps: float = 1e-5) -> None:
+        """
+        Original Transformer architecture from the paper 'Attention is All You Need' by Vaswani et al. (2017).
+        This architecture unites Transformer Encoder and Transformer Decoder.
+
+        Parameters
+        ----------
+        d_model : int
+            Dimensionality of input embeddings.
+
+        n_head : int
+            The number of attention heads in each attention layer.
+
+        n_enc_layers : int, default=2
+            The number of layers in the Transformer encoder.
+
+        n_dec_layers : int, default=2
+            The number of layers in the Transformer decoder.
+
+        dim_ff : int, default=2048
+            The dimensionality of the feedforward layers in the encoder and decoder.
+
+        dropout : float, default=0.1
+            The dropout rate applied to layers during training to help prevent overfitting.
+
+        activation : Activation, default=ReLU
+            The activation function used in the feedforward layers.
+
+        layer_norm_eps : float, default=1e-5
+            A small value added to the denominator for numerical stability when performing layer normalization.
+
+        Returns
+        -------
+        None
+        """
         self.encoder = TransformerEncoder(d_model=d_model,
-                                          n_head=n_head,
-                                          n_enc_layers=n_enc_layers,
-                                          dim_ff=dim_ff,
-                                          dropout=dropout,
-                                          activation=activation,
-                                          layer_norm_eps=layer_norm_eps)
+                                            n_head=n_head,
+                                            n_enc_layers=n_enc_layers,
+                                            dim_ff=dim_ff,
+                                            dropout=dropout,
+                                            activation=activation,
+                                            layer_norm_eps=layer_norm_eps)
 
         self.decoder = TransformerDecoder(d_model=d_model,
-                                          n_head=n_head,
-                                          n_dec_layers=n_dec_layers,
-                                          dim_ff=dim_ff,
-                                          dropout=dropout,
-                                          activation=activation,
-                                          layer_norm_eps=layer_norm_eps)
+                                            n_head=n_head,
+                                            n_dec_layers=n_dec_layers,
+                                            dim_ff=dim_ff,
+                                            dropout=dropout,
+                                            activation=activation,
+                                            layer_norm_eps=layer_norm_eps)
 
-    def _decoder_backward(self, delta):
+    def _decoder_backward(self, delta: np.ndarray) -> None:
+        """
+        Helper method for executing TransformerDecoder backward pass. Computes gradient with respect to encoder output.
+
+        Parameters
+        ----------
+        delta : np.ndarray
+            Gradient array of shape `(batch_size, seq_len, d_model)`.
+
+        Returns
+        -------
+        None
+        """
         self.decoder.backward(delta)
 
         # Gradient for encoder comes from decoder    
-        grad_wrt_encoder_output_total = np.zeros_like(self.decoder.output)
+        grad_wrt_encoder_output_total = np.zeros_like(self.encoder.output)
         for idx, dec in enumerate(self.decoder.decoder_layers):
             grad_wrt_encoder_output_total += dec.grad_wrt_encoder_output
 
         self.grad_wrt_encoder_output_total = grad_wrt_encoder_output_total
         
-    def forward(self, inputs_enc, inputs_dec, training=False):
+    def forward(self, inputs_enc: np.ndarray, inputs_dec: np.ndarray, training: bool = False) -> None:
+        """
+        Forward pass for the Transformer. Creates output attribute.
+
+        Parameters
+        ----------
+        inputs_enc : np.ndarray
+            Encoder input array of shape `(batch_size, seq_len, d_model)`.
+
+        inputs_dec : np.ndarray, default=None
+            Decoder input array of shape `(batch_size, seq_len, d_model)`.
+
+        training : bool, default=False
+            A flag indicating whether the model is in training mode. If True, dropout is applied to outputs.
+
+        Returns
+        -------
+        None
+        """
         self.encoder.forward(inputs_enc, training)
         self.decoder.forward(inputs_dec, self.encoder.output, training)
         self.output = self.decoder.output
 
-    def backward(self, delta):
+    def backward(self, delta: np.ndarray) -> None:
+        """
+        Backward pass for the Transformer.
+
+        Parameters
+        ----------
+        delta : np.ndarray
+            Gradient array of shape `(batch_size, seq_len, d_model)`.
+
+        Returns
+        -------
+        None
+        """
         self._decoder_backward(delta)
         self.encoder.backward(self.grad_wrt_encoder_output_total)
 

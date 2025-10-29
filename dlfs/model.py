@@ -197,7 +197,7 @@ class TransformerDecoderModel(Module):
 
     def __init__(self, vocab_size: int, seq_len: int, 
                        n_embed: int = 512, n_head: int = 4, n_dec_layers: int = 2, dim_ff: int = 2048, 
-                       dropout: float = 0.1, activation: Activation = ReLU(), layer_norm_eps: float = 1e-5, 
+                       dropout: float = 0.1, activation: Activation = ReLU, layer_norm_eps: float = 1e-5, 
                        loss_function: Loss = None, optimizer: Optimizer = None) -> None:
         """
         Decoder only model similar to GPT.

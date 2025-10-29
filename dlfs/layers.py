@@ -895,10 +895,36 @@ class LSTMLayer(Layer):
     
 class DropoutLayer(Layer):
 
-    def __init__(self, rate):
+    def __init__(self, rate: float) -> None:
+        """
+        Dropout Layer is a regularization technique used to 
+        decrease overfitting by randomly setting a fraction of the input units to 
+        zero at each training epoch.
+
+        Parameters
+        ----------
+        rate : float
+            Float between 0 and 1 which represents the fraction 
+            of input units to drop. 
+        """
         self.rate = 1 - rate
 
-    def forward(self, inputs, training=False):
+    def forward(self, inputs: np.ndarray, training: bool = False) -> None:
+        """
+        Forward pass using the Dropout layer. Creates output attribute.
+
+        Parameters
+        ----------
+        inputs : numpy.ndarray
+            Input matrix.
+
+        training : bool, default=False
+            Flag indicating whether dropout is applied or not.
+
+        Returns
+        -------
+        None
+        """
         self.inputs = inputs
 
         if not training:
@@ -908,16 +934,37 @@ class DropoutLayer(Layer):
         self.binary_mask = np.random.binomial(1, self.rate, size=self.inputs.shape) / self.rate
         self.output = inputs * self.binary_mask
 
-    def backward(self, dvalues):
-        self.dinputs = dvalues * self.binary_mask
+    def backward(self, delta: np.ndarray) -> None:
+        """
+        Backward pass using the Dropout layer. Creates dinputs gradient attribute.
+
+        Parameters
+        ----------
+        delta : np.ndarray
+            Gradient obtained by backpropagation.
+
+        Returns
+        -------
+        None
+        """
+        self.dinputs = delta * self.binary_mask
 
 class LayerNorm(Layer):
-    def __init__(self, num_features, epsilon=1e-3):
+    
+    def __init__(self, num_features: int, epsilon: float = 1e-5) -> None:
         """
-        Initializes the LayerNorm layer.
+        Layer Normalization (LayerNorm) is a technique for normalizing the input across the features 
+        of a layer (sample-wise, normalization is done independently for each sample). 
+        It's primary use is stabilizing training in deep models. 
+
+        Parameters
+        ----------
+        num_features : int
+            The number of features of the input array. 
         
-        :param num_features: The number of features in the input (i.e., the dimension to normalize over).
-        :param epsilon: Small value to prevent division by zero when computing the standard deviation.
+        epsilon : float, default=1e-5
+            A small constant added to the denominator during normalization to prevent division by zero 
+            and to maintain numerical stability.
         """
         self.epsilon = epsilon
         
@@ -925,12 +972,21 @@ class LayerNorm(Layer):
         self.gamma = np.ones(num_features)
         self.beta = np.zeros(num_features)
         
-    def forward(self, inputs, training=False):
+    def forward(self, inputs: np.ndarray, training: bool = False):
         """
-        Forward pass of LayerNorm
+        Forward pass using LayerNorm. Creates output attribute.
         
-        :param x: Input data of shape (batch_size, num_features)
-        :return: Layer normalized output
+        Parameters
+        ----------
+        inputs : np.ndarray
+            Input array to be normalized.
+
+        training : bool, default=False
+            Flag indicating whether dropout is applied or not (used for API consistency).
+
+        Returns
+        -------
+        None
         """
         self.inputs = inputs
 
@@ -942,7 +998,19 @@ class LayerNorm(Layer):
         self.normalized = self.centered * self.std_inv
         self.output = self.gamma * self.normalized + self.beta
     
-    def backward(self, delta):
+    def backward(self, delta: np.ndarray) -> None:
+        """
+        Backward pass using LayerNorm. Creates dinputs gradient attribute.
+
+        Parameters
+        ----------
+        delta : np.ndarray
+            Gradient obtained by backpropagation.
+
+        Returns
+        -------
+        None
+        """
         # Assumes delta has shape (B, ..., F) matching self.output
         N = self.inputs.shape[-1]  # num_features
 

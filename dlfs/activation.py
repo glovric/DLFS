@@ -129,7 +129,6 @@ class GELU(Activation):
 
         self.dinputs = delta * grad
 
-
 class Sigmoid(Activation):
 
     def __init__(self) -> None:

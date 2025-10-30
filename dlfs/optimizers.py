@@ -29,32 +29,32 @@ class Optimizer_SGD(Optimizer):
         self.decay = decay
         self.iterations = 0
 
-    def _update_sgd_parameters(self, params: np.ndarray, gradients: np.ndarray, momentums: np.ndarray = None) -> tuple:
+    def _update_sgd_parameters(self, params: np.ndarray, gradient: np.ndarray, momentum: np.ndarray = None) -> tuple:
         """
-        Helper method for calculating new parameters of a layer. Uses momentums if provided.
+        Helper method for calculating new parameters of a layer. Uses momentum if provided.
 
         Parameters
         ----------
         params : np.ndarray
             Layer parameter to be updated.
 
-        gradients : np.ndarray
+        gradient : np.ndarray
             Layer gradient used to update the parameter.
 
-        momentums : np.ndarray, default=None
+        momentum : np.ndarray, default=None
             Momentum used for better performance of the algorithm.
 
         Returns
         -------
-        update_params, updated_momentums : tuple[np.ndarray, np.ndarray]
+        update_params, updated_momentum : tuple[np.ndarray, np.ndarray]
         """
-        if momentums is not None:
-            # Calculate new parameters using momentums
-            new_momentums = self.momentum * momentums - self.current_learning_rate * gradients
-            return params + new_momentums, new_momentums
+        if momentum is not None:
+            # Calculate new parameters using momentum
+            new_momentum = self.momentum * momentum - self.current_learning_rate * gradient
+            return params + new_momentum, new_momentum
         else:
             # Calculate new parameters using vanilla SGD
-            update = -self.current_learning_rate * gradients
+            update = -self.current_learning_rate * gradient
             return params + update, None
         
     def _update_layer_parameters(self, layer: Layer) -> None:
@@ -75,22 +75,22 @@ class Optimizer_SGD(Optimizer):
         # Loop through parameters of a layer
         for param_name, param_value in params.items():
 
-            # Get the gradient attribute and momentums attributes from the layer
+            # Get the gradient attribute and momentum attributes from the layer
             gradient = getattr(layer, "d" + param_name)
-            momentums = getattr(layer, param_name + "_momentums", None)
+            momentum = getattr(layer, param_name + "_momentum", None)
 
-            # Calculate new parameters and new momentums
-            new_params, new_momentums = self._update_sgd_parameters(params=param_value, gradients=gradient, momentums=momentums)
+            # Calculate new parameters and new momentum
+            new_params, new_momentum = self._update_sgd_parameters(params=param_value, gradient=gradient, momentum=momentum)
 
             # Set new parameters attribute to layer
             setattr(layer, param_name, new_params)
-            if new_momentums is not None:
-                # Set new momentums attribute to layer
-                setattr(layer, param_name + "_momentums", new_momentums)
+            if new_momentum is not None:
+                # Set new momentum attribute to layer
+                setattr(layer, param_name + "_momentum", new_momentum)
         
     def _init_layer_parameters(self, layer: Layer) -> None:
         """
-        Helper method for initializing momentums of a layer.
+        Helper method for initializing momentum of a layer.
 
         Parameters
         ----------
@@ -103,8 +103,8 @@ class Optimizer_SGD(Optimizer):
         """
         params = layer.get_parameters()
         for p in params:
-            # Create empty momentums array for every parameter 
-            setattr(layer, f"{p}_momentums", np.zeros_like(params[p]))
+            # Create empty momentum array for every parameter 
+            setattr(layer, f"{p}_momentum", np.zeros_like(params[p]))
     
     def pre_update_parameters(self) -> None:
         """
@@ -139,8 +139,8 @@ class Optimizer_SGD(Optimizer):
                 return
             param_name = list(params.keys())[0] 
 
-            # Check if momentums are initialized and should they be initialized
-            if not hasattr(layer, param_name + "_momentums") and self.momentum:
+            # Check if momentum are initialized and should they be initialized
+            if not hasattr(layer, param_name + "_momentum") and self.momentum:
                 self._init_layer_parameters(layer)
 
             # Update layer parameters
@@ -168,9 +168,13 @@ class Optimizer_SGD(Optimizer):
 
 class Optimizer_Adam(Optimizer):
 
-    def __init__(self, learning_rate=1e-3, decay=0, epsilon=1e-7,beta_1=0.9, beta_2=0.999, clip_grad=False):
+    def __init__(self, learning_rate: float = 1e-3, decay: float = 0, epsilon: float = 1e-7, 
+                 beta_1: float = 0.9, beta_2: float = 0.999, clip_grad: bool = False):
         """
-        Adam optimizing algorithm.
+        Adam optimizing algorithm. It uses first and second momentum estimates to update model parameters.
+        First momentum estimate is referred to as momentum and second momentum is referred to as variance.
+        Momentum can be interpreted as mean (central tendency) of the gradients and variance as how much gradients
+        are dispersed.
 
         Parameters
         ----------
@@ -187,7 +191,10 @@ class Optimizer_Adam(Optimizer):
             Exponential decay rate for momentum.
         
         beta_2 : float, default=0.999
-            Exponential decay rate for cache.
+            Exponential decay rate for variance.
+
+        clip_grad : bool, default=False
+            Flag indicating whether adaptive gradient clipping will be applied.
 
         Attributes
         ----------
@@ -205,7 +212,7 @@ class Optimizer_Adam(Optimizer):
 
     def _init_layer_parameters(self, layer: Layer) -> None:
         """
-        Helper method for initializing Adam parameters of a layer (momentums or cache).
+        Helper method for initializing Adam parameters of a layer (momentum and variance).
 
         Parameters
         ----------
@@ -218,9 +225,9 @@ class Optimizer_Adam(Optimizer):
         """
         params = layer.get_parameters()
         for p in params:
-            # Create empty momentums and cache arrays for every parameter 
-            setattr(layer, f"{p}_cache", np.zeros_like(params[p]))
-            setattr(layer, f"{p}_momentums", np.zeros_like(params[p]))
+            # Create empty momentum and variance arrays for every parameter 
+            setattr(layer, f"{p}_variance", np.zeros_like(params[p]))
+            setattr(layer, f"{p}_momentum", np.zeros_like(params[p]))
 
     def _update_layer_parameters(self, layer: Layer) -> None:
         """
@@ -241,52 +248,52 @@ class Optimizer_Adam(Optimizer):
 
         for param_name, param_value in params.items():
 
-            # Get gradient, cache and momentums attributes from the layer
+            # Get gradient, variance and momentum attributes from the layer
             gradient = getattr(layer, "d" + param_name)
-            cache = getattr(layer, param_name + "_cache")
-            momentums = getattr(layer, param_name + "_momentums")
+            variance = getattr(layer, param_name + "_variance")
+            momentum = getattr(layer, param_name + "_momentum")
 
-            # Calculate new parameters, new cache and  new momentums
-            new_params, new_momentums, new_cache = self._update_adam_parameters(params=param_value, gradients=gradient, momentums=momentums, cache=cache)
+            # Calculate new parameters, new variance and  new momentum
+            new_params, new_momentum, new_variance = self._update_adam_parameters(params=param_value, gradient=gradient, momentum=momentum, variance=variance)
 
-            # Set new parameters, new cache and new momentums attributes to layer
+            # Set new parameters, new variance and new momentum attributes to layer
             setattr(layer, param_name, new_params)
-            setattr(layer, param_name + "_momentums", new_momentums)
-            setattr(layer, param_name + "_cache", new_cache)
+            setattr(layer, param_name + "_momentum", new_momentum)
+            setattr(layer, param_name + "_variance", new_variance)
     
-    def _update_adam_parameters(self, params: np.ndarray, gradients: np.ndarray, momentums: np.ndarray, cache: np.ndarray) -> tuple:
+    def _update_adam_parameters(self, params: np.ndarray, gradient: np.ndarray, momentum: np.ndarray, variance: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Helper method for calculating new Adam parameters of a layer (momentums and caches).
+        Helper method for calculating new Adam parameters of a layer (momentum and variance).
 
         Parameters
         ----------
         params : np.ndarray
-            Layer parameter to be updated.
+            Parameter to be updated.
 
         gradient : np.ndarray
-            Layer gradient used for update.
+            Parameter gradient used for update.
 
-        momentums : np.ndarray
-            Layer momentums used for update.
+        momentum : np.ndarray
+            Parameter gradient momentum used for update.
 
-        cache : np.ndarray
-            Layer cache used for update.
+        variance : np.ndarray
+            Parameter gradient variance used for update.
 
         Returns
         -------
-        updated_param, new_momentums, new_cache : tuple
-            Updated parameter, momentums and cache.
+        updated_param, new_momentum, new_variance : tuple
+            Updated parameter, momentum and variance.
         """
-        new_momentums = self.beta_1 * momentums + (1 - self.beta_1) * gradients
-        momentums_corrected = new_momentums / (1 - self.beta_1 ** (self.iterations + 1))
+        new_momentum = self.beta_1 * momentum + (1 - self.beta_1) * gradient
+        momentum_corrected = new_momentum / (1 - self.beta_1 ** (self.iterations + 1))
 
-        new_cache = self.beta_2 * cache + (1 - self.beta_2) * gradients**2
-        cache_corrected = new_cache / (1 - self.beta_2 ** (self.iterations + 1))
+        new_variance = self.beta_2 * variance + (1 - self.beta_2) * gradient**2
+        variance_corrected = new_variance / (1 - self.beta_2 ** (self.iterations + 1))
 
-        parameter_update = -self.current_learning_rate * momentums_corrected / (np.sqrt(cache_corrected) + self.epsilon)
-        return params + parameter_update, new_momentums, new_cache
+        parameter_update = -self.current_learning_rate * (momentum_corrected / (np.sqrt(variance_corrected) + self.epsilon))
+        return params + parameter_update, new_momentum, new_variance
 
-    def _clip_gradients(self, layer: Layer, clip_factor=0.2, eps=1e-3):
+    def _clip_gradients(self, layer: Layer, clip_factor: float = 0.2, eps: float = 1e-3) -> None:
         """
         Adaptive Gradient Clipping (AGC) of gradients based on parameter norms.
 
@@ -298,6 +305,10 @@ class Optimizer_Adam(Optimizer):
             Ratio of gradient norm to parameter norm to clip at.
         eps : float
             Small value to avoid division by zero.
+
+        Returns
+        -------
+        None
         """
         params = layer.get_parameters()
 
@@ -339,7 +350,7 @@ class Optimizer_Adam(Optimizer):
                 return
             param_name = list(params.keys())[0] 
 
-            if not hasattr(layer, param_name + "_cache"):
+            if not hasattr(layer, param_name + "_variance"):
                 self._init_layer_parameters(layer)
 
             if self.clip_grad:
@@ -364,3 +375,114 @@ class Optimizer_Adam(Optimizer):
         None
         """
         self.iterations += 1
+
+class Optimizer_AdamW(Optimizer_Adam):
+
+    def __init__(self, learning_rate: float = 1e-3, weight_decay: float = 0.01, lr_decay: float = 0, 
+                 epsilon: float = 1e-7, beta_1: float = 0.9, beta_2: float = 0.999, amsgrad: bool = False, clip_grad: bool = False):
+        """
+        AdamW optimizing algorithm. 
+        Compared to vanilla Adam, AdamW applies weight decay (effectively L2 regularization) during optimizer step.
+
+        Parameters
+        ----------
+        learning_rate : float, default=0.001
+            Step size used in gradient descent.
+
+        weight_decay : float, default=0.01
+            Factor used to regularize gradient.
+
+        lr_decay : float, default=0
+            Factor used to reduce learning rate over time.
+
+        epsilon : float, default=1e-7
+            Factor used to avoid divison by zero while updating parameters.
+
+        beta_1 : float, default=0.9
+            Exponential decay rate for momentum.
+        
+        beta_2 : float, default=0.999
+            Exponential decay rate for variance.
+
+        amsgrad : bool, default=False
+            Flag indicating whether AMSGrad second moment calculation is applied.
+
+        clip_grad : bool, default=False
+            Flag indicating whether adaptive gradient clipping will be applied.
+
+        Attributes
+        ----------
+        iterations : int, default=0
+            Number of training iterations used to calculate new learning rate with decay.
+        """
+        super().__init__(learning_rate=learning_rate, decay=lr_decay, epsilon=epsilon, 
+                         beta_1=beta_1, beta_2=beta_2, clip_grad=clip_grad)
+        self.weight_decay = weight_decay
+        self.amsgrad = amsgrad
+
+    def _update_adamw_parameters(self, params: np.ndarray, gradient: np.ndarray, momentum: np.ndarray, variance: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Helper method for calculating new AdamW parameters of a layer (momentum and variance).
+
+        Parameters
+        ----------
+        params : np.ndarray
+            Parameter to be updated.
+
+        gradient : np.ndarray
+            Parameter gradient used for update.
+
+        momentum : np.ndarray
+            Parameter gradient momentum used for update.
+
+        variance : np.ndarray
+            Parameter gradient variance used for update.
+
+        Returns
+        -------
+        updated_param, new_momentum, new_variance : tuple
+            Updated parameter, momentum and variance.
+        """
+        new_momentum = self.beta_1 * momentum + (1 - self.beta_1) * gradient
+        momentum_corrected = new_momentum / (1 - self.beta_1 ** (self.iterations + 1))
+
+        new_variance = self.beta_2 * variance + (1 - self.beta_2) * gradient**2
+        if self.amsgrad:
+            new_variance = np.maximum(variance, new_variance)
+        variance_corrected = new_variance / (1 - self.beta_2 ** (self.iterations + 1))
+
+        parameter_update = -self.current_learning_rate * ((momentum_corrected / (np.sqrt(variance_corrected) + self.epsilon)) + self.weight_decay * gradient)
+    
+        return params + parameter_update, new_momentum, new_variance
+
+    def _update_layer_parameters(self, layer: Layer) -> None:
+        """
+        Helper method for updating parameters of a layer.
+
+        Parameters
+        ----------
+        layer: Layer
+            Layer to be updated.
+
+        Returns
+        -------
+        None
+        """
+        params = layer.get_parameters()
+
+        # Loop through parameters of a layer
+
+        for param_name, param_value in params.items():
+
+            # Get gradient, variance and momentum attributes from the layer
+            gradient = getattr(layer, "d" + param_name)
+            variance = getattr(layer, param_name + "_variance")
+            momentum = getattr(layer, param_name + "_momentum")
+
+            # Calculate new parameters, new variance and  new momentum
+            new_params, new_momentum, new_variance = self._update_adamw_parameters(params=param_value, gradient=gradient, momentum=momentum, variance=variance)
+
+            # Set new parameters, new variance and new momentum attributes to layer
+            setattr(layer, param_name, new_params)
+            setattr(layer, param_name + "_momentum", new_momentum)
+            setattr(layer, param_name + "_variance", new_variance)

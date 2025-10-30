@@ -100,10 +100,32 @@ class MSE_Loss(Loss):
 
 class CCE_Loss(Loss):
 
-    def __init__(self, from_logits=True):
+    def __init__(self, from_logits: bool = True) -> None:
+        """
+        Categorical Cross Entropy loss function.
+        """
         self.from_logits = from_logits
 
-    def calculate(self, y_pred, y_true):
+    def calculate(self, y_pred: np.ndarray, y_true: np.ndarray) -> float:
+        """
+        Calculate Categorical Cross Entropy loss.
+
+        Parameters
+        ----------
+        y_pred : np.ndarray
+            Predicted values of shape `(batch_size, num_classes)`
+
+        y_true : np.ndarray
+            True labels, either as class indices of shape `(batch_size, )` or one-hot encoded labels of shape `(batch_size, num_classes)`.
+
+        Returns
+        -------
+        loss : float
+
+        Notes
+        -----
+        - If `from_logits=True`, softmax is applied to the `y_pred` values before calculating the loss.
+        """
 
         if self.from_logits:
             y_pred = Softmax.calculate(y_pred)
@@ -118,23 +140,25 @@ class CCE_Loss(Loss):
 
         return np.mean(-np.log(correct_confidences))
 
-    def backward(self, y_pred: np.ndarray, y_true: np.ndarray):
+    def backward(self, y_pred: np.ndarray, y_true: np.ndarray) -> None:
         """
-        Backward pass for Categorical Cross Entropy loss. Computes the gradients
-        of the loss with respect to the model's predictions.
+        Backward pass using Categorical Cross Entropy loss. Creates gradient attribute with respect to predicted values.
 
         Parameters
         ----------
         y_pred : np.ndarray
-            The predicted values from the model (logits) of shape (batch_size, num_classes).
+            Predicted values of shape `(batch_size, num_classes)`
         
         y_true : np.ndarray
-            The true labels, either as class indices of shape (batch_size, ) or one-hot encoded labels (2D array).
-            Shape: (batch_size,) for class indices or (batch_size, num_classes) for one-hot labels.
+            True labels, either as class indices of shape `(batch_size, )` or one-hot encoded labels of shape `(batch_size, num_classes)`.
+
+        Returns
+        -------
+        None
 
         Notes
         -----
-        - If `y_true` is provided as class indices of shape (batch_size, ), the method will one-hot encode it.
+        - If `y_true` is provided as class indices of shape `(batch_size, )`, the method will one-hot encode it.
         - If `from_logits=True`, softmax is applied to the `y_pred` values before calculating the gradients.
         """
 

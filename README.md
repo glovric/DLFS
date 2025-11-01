@@ -18,6 +18,8 @@ Architectures currently implemented:
 
 - Autoencoder
 
+- Transformer
+
 ## uv Setup
 
 1. **Create virtual environment and install dependencies**:

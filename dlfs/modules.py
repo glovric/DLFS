@@ -173,7 +173,7 @@ class LSTM(Module):
 
 class SingleAttentionHead(Module):
 
-    def __init__(self, input_size: int, head_size: int, dropout=0.1, use_mask=False) -> None:
+    def __init__(self, input_size: int, head_size: int, dropout=0.1, use_mask: bool = False) -> None:
         """
         A single head of attention for computing the attention mechanism in models like Transformers.
 
@@ -261,35 +261,46 @@ class SingleAttentionHead(Module):
         Parameters
         ----------
         delta : np.ndarray
-            Gradient array of shape `(batch_size, seq_len, head_size)` used in computing query matrix.
+            Gradient array of shape `(batch_size, seq_len, head_size)`.
 
         Returns
         -------
         None
         """
-        d_w = np.matmul(delta, self.v.swapaxes(-2, -1))
+        # Calculate dW
+        dW = np.matmul(delta, self.v.swapaxes(-2, -1))
 
-        self.dropout.backward(d_w)
-        d_w = self.dropout.dinputs
+        # Backprop dW through Dropout
+        self.dropout.backward(dW)
+        dW = self.dropout.dinputs
 
-        self.softmax.backward(d_w)
-        d_w = self.softmax.dinputs
+        # Backprop dW through Softmax
+        self.softmax.backward(dW)
+        # dA we set to Softmax grad
+        dA = self.softmax.dinputs
 
         if self.use_mask:
-            B, T, _ = d_w.shape
+            B, T, _ = dA.shape
+            # Create lower triangular mask matrix
             mask = np.tril(np.ones((T, T), dtype=bool))
-            d_w = d_w * mask[None, :, :]
+            # Apply mask to future tokens
+            dA = dA * mask[None, :, :]
 
-        d_q = np.matmul(d_w, self.k) / self.normalize_factor
-        d_k = np.matmul(d_w.swapaxes(-2, -1), self.q) / self.normalize_factor
+        # Grad with respect to query
+        dQ = np.matmul(dA, self.k) / self.normalize_factor
+        # Grad with respect to key
+        dK = np.matmul(dA.swapaxes(-2, -1), self.q) / self.normalize_factor
+        # Grad with respect to value
+        dV = np.matmul(self.attn_weights.transpose(0, 2, 1), delta)
 
-        d_v_input = np.matmul(self.attn_weights.transpose(0, 2, 1), delta)
+        # Backprop grads to their respective layers
+        self.key.backward(dK)
+        self.query.backward(dQ)
+        self.value.backward(dV)
 
-        self.key.backward(d_k)
-        self.query.backward(d_q)
-        self.value.backward(d_v_input)
-
+        # Grad with respect to decoder inputs
         self.dinputs_query = self.query.dinputs
+        # Grad with respect to encoder inputs
         self.dinputs_context = self.key.dinputs + self.value.dinputs
 
 class MultiHeadAttention(Module):
@@ -337,7 +348,7 @@ class MultiHeadAttention(Module):
         query_input : np.ndarray
             Input array of shape `(batch_size, seq_len, input_size)` used in computing query matrix.
 
-        context_input : np.ndarray
+        context_input : np.ndarray, default=None
             Input array of shape `(batch_size, seq_len, input_size)` used in computing key and value matrices.
             In self-attention, this array will be the same as `query_input`, but in encoder-decoder cross-attention, 
             the `context_input` comes from the encoder.

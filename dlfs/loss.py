@@ -29,7 +29,7 @@ class BCE_Loss(Loss):
         # Clip y_pred so logarithm doesn't become unstable
         y_pred_clipped = np.clip(y_pred, 1e-7, 1-1e-7)
         loss = -(y_true * np.log(y_pred_clipped) + (1 - y_true) * np.log(1 - y_pred_clipped))
-        return np.mean(loss)
+        return np.mean(np.sum(loss, axis=1))
     
     def backward(self, y_pred: np.ndarray, y_true: np.ndarray) -> None:
         """

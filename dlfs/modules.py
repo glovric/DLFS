@@ -1,7 +1,63 @@
 import numpy as np
-from .base import Module, Activation
+from .base import Module, Activation, Layer
 from .layers import *
 from .activation import Softmax, ReLU
+
+class SequentialWrapper(Module):
+
+    def __init__(self, layers: list[Layer | Module | Activation] = []) -> None:
+        """
+        SequentialWrapper is module which sequentially processes input data, forwarding it through every layer.
+
+        Parameters
+        ----------
+        layers: list[Layer | Module | Activation], default=[]
+            List of network components.
+        """
+        self.layers = layers
+
+    def forward(self, x: np.ndarray, training: bool = False) -> None:
+        """
+        Forward pass for the SequentialWrapper. Creates output attribute.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Input array.
+
+        training : bool, default=False
+            A flag indicating whether the model is in training mode. If True, dropout is applied.
+
+        Returns
+        -------
+        None
+        """
+        self.layers[0].forward(x, training)
+
+        for idx, layer in enumerate(self.layers[1:], start=1):
+            layer.forward(self.layers[idx - 1].output, training)
+
+        self.output = self.layers[-1].output
+
+    def backward(self, delta: np.ndarray) -> None:
+        """
+        Backward pass for the SequentialWrapper. Creates dinputs gradient attribute.
+
+        Parameters
+        ----------
+        delta : np.ndarray
+            Upstream gradient array.
+
+        Returns
+        -------
+        None
+        """
+        self.layers[-1].backward(delta)
+        
+        for idx, layer in reversed(list(enumerate(self.layers[:-1]))):
+            layer.backward(self.layers[idx + 1].dinputs)
+
+        self.dinputs = self.layers[0].dinputs
 
 class RNN(Module):
 

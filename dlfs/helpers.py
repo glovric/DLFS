@@ -1,5 +1,6 @@
 import numpy as np
 import time
+import struct
 
 def dilate(arr: np.ndarray, stride: int) -> np.ndarray:
     """
@@ -97,3 +98,210 @@ def get_random_batch(*data: tuple[np.ndarray, ...], batch_size: int):
     # Generate random sample indices
     idx = np.random.randint(len(data[0]), size=(batch_size, ))
     return tuple(d[idx] for d in data)
+
+def im2col(X, kernel_shape, stride=1, padding=(0, 0)):
+    B, C = X.shape[:2]
+    kH, kW = kernel_shape
+
+    if isinstance(padding, tuple):
+        pad_H, pad_W = padding
+    else:
+        pad_H = pad_W = padding
+
+    X_padded = np.pad(X, ( (0, 0), (0, 0),(pad_H, pad_H), (pad_W, pad_W) ), mode='constant')
+
+    H_p, W_p = X_padded.shape[2:]
+
+    out_H = (H_p- kH) // stride + 1
+    out_W = (W_p- kW) // stride + 1
+
+    L = out_H * out_W
+
+    cols = np.zeros((B, C * kH * kW, L))
+
+    patch_idx = 0
+    for i in range(out_H):
+        for j in range(out_W):
+
+            h_start = i * stride
+            w_start = j * stride
+
+            # slice patch for ALL channels
+            patch = X_padded[:, :, h_start:h_start + kH, w_start:w_start + kW]
+
+            # flatten channels + kernel dims
+            patch = patch.reshape(B, -1)    # → (B, C*kH*kW)
+
+            cols[:, :, patch_idx] = patch
+            patch_idx += 1
+    
+    return cols, out_H, out_W
+
+def col2im(cols, output_shape, kernel_shape, stride=1, padding=0):
+    B, C_k, num_cols = cols.shape   # C_k = C * kH * kW
+    H, W = output_shape
+    kH, kW = kernel_shape
+
+    # padded spatial dims
+    H_p, W_p = H + 2*padding, W + 2*padding
+
+    # output tensor
+    X_padded = np.zeros((B, C_k // (kH*kW), H_p, W_p))
+
+    # how many sliding positions?
+    out_H = (H_p - kH) // stride + 1
+    out_W = (W_p - kW) // stride + 1
+
+    idx = 0
+    for i in range(out_H):
+        for j in range(out_W):
+            h_start = i * stride
+            w_start = j * stride
+
+            # reshape column back into (B, C, kH, kW)
+            patch = cols[:, :, idx].reshape(B, -1, kH, kW)
+
+            # scatter-add patch into spatial tensor
+            X_padded[:, :, h_start:h_start+kH, w_start:w_start+kW] += patch
+
+            idx += 1
+
+    # remove padding
+    if padding > 0:
+        X_padded = X_padded[:, :, padding:-padding, padding:-padding]
+
+    return X_padded
+
+def im2col_strided(X, kernel_shape, stride=1, padding=(0, 0)):
+    B, C, H, W = X.shape
+    kH, kW = kernel_shape
+
+    # Handle padding argument
+    if isinstance(padding, tuple):
+        pad_H, pad_W = padding
+    else:
+        pad_H = pad_W = padding
+
+    # Pad input
+    X_padded = np.pad(
+        X,
+        ((0, 0), (0, 0), (pad_H, pad_H), (pad_W, pad_W)),
+        mode="constant"
+    )
+
+    _, _, H_p, W_p = X_padded.shape
+
+    # Compute output spatial size
+    out_H = (H_p - kH) // stride + 1
+    out_W = (W_p - kW) // stride + 1
+    L = out_H * out_W  # number of sliding windows
+
+    # Original strides
+    sB, sC, sH, sW = X_padded.strides
+
+    # as_strided shape: (B, C, out_H, out_W, kH, kW)
+    shape = (B, C, out_H, out_W, kH, kW)
+
+    # as_strided strides
+    strides = (
+        sB,                   # batch dim
+        sC,                   # channel dim
+        sH * stride,          # move down by stride
+        sW * stride,          # move right by stride
+        sH,                   # kernel H step
+        sW                    # kernel W step
+    )
+
+    # Extract sliding windows
+    windows = np.lib.stride_tricks.as_strided(
+        X_padded, shape=shape, strides=strides
+    )
+    # windows shape: (B, C, out_H, out_W, kH, kW)
+
+    # Rearrange into im2col format:
+    # 1. move kernel dims next to channels
+    cols = windows.reshape(B, C, out_H * out_W, kH * kW)
+    # shape: (B, C, L, kH*kW)
+
+    # 2. merge C and kH*kW
+    cols = cols.transpose(0, 1, 3, 2).reshape(B, C * kH * kW, L)
+    # final shape: (B, C*kH*kW, L)
+
+    return cols, out_H, out_W
+
+def col2im_strided(cols, output_shape, kernel_shape, stride=1, padding=0):
+    B, C_k, L = cols.shape  # C_k = C * kH * kW
+    H, W = output_shape
+    kH, kW = kernel_shape
+    C = C_k // (kH * kW)
+
+    # padded spatial dimensions
+    H_p, W_p = H + 2*padding, W + 2*padding
+
+    # output tensor (padded)
+    X_padded = np.zeros((B, C, H_p, W_p), dtype=cols.dtype)
+
+    # compute output height/width
+    out_H = (H_p - kH) // stride + 1
+    out_W = (W_p - kW) // stride + 1
+
+    # reshape cols into (B, C, out_H, out_W, kH, kW)
+    cols_reshaped = cols.reshape(B, C, kH * kW, out_H * out_W)
+    cols_reshaped = cols_reshaped.transpose(0, 1, 3, 2)
+    cols_reshaped = cols_reshaped.reshape(B, C, out_H, out_W, kH, kW)
+
+    # create strided view of X_padded
+    sB, sC, sH, sW = X_padded.strides
+    shape = (B, C, out_H, out_W, kH, kW)
+    strides = (sB, sC, sH*stride, sW*stride, sH, sW)
+    X_strided = np.lib.stride_tricks.as_strided(X_padded, shape=shape, strides=strides)
+
+    # accumulate all patches into X_strided
+    np.add.at(X_strided, (...,), cols_reshaped)
+
+    # remove padding if needed
+    if padding > 0:
+        X_padded = X_padded[:, :, padding:-padding, padding:-padding]
+
+    return X_padded
+
+#### Dataset helpers ####
+
+def load_mnist_images(file_path):
+    with open(file_path, 'rb') as f:
+        # Read the header information
+        magic_number, num_images, rows, cols = struct.unpack(">IIII", f.read(16))
+        # Read the image data
+        images = np.fromfile(f, dtype=np.uint8).reshape(num_images, rows, cols)
+        return images
+    
+def load_mnist_labels(file_path):
+    with open(file_path, 'rb') as f:
+        # Read the header information
+        magic_number, num_labels = struct.unpack(">II", f.read(8))
+        # Read the label data
+        labels = np.fromfile(f, dtype=np.uint8)
+        return labels
+    
+def load_mnist(path_train_data, path_train_labels, path_test_data, path_test_labels):
+    X_train = load_mnist_images(path_train_data)
+    y_train = load_mnist_labels(path_train_labels)
+
+    X_test = load_mnist_images(path_test_data)
+    y_test = load_mnist_labels(path_test_labels)
+
+    return X_train, y_train, X_test, y_test
+
+def preprocess_whole_mnist(x):
+    x = x.astype("float32") / 255
+    return x
+
+def select_mnist_labels(x, y, labels: list, limit):
+    label_indices = []
+    for l in labels:
+        label_index = np.where(y == l)[0][:limit]
+        label_indices.append(label_index)
+    all_indices = np.hstack(label_indices)
+    all_indices = np.random.permutation(all_indices)
+    x, y = x[all_indices], y[all_indices]
+    return x, y

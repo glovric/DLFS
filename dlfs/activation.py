@@ -83,6 +83,32 @@ class ReLU(Activation):
         # Derivative of ReLU
         self.dinputs[self.inputs < 0] = 0
 
+class LeakyReLU(Activation):
+    def __init__(self, alpha=0.01):
+        """
+        Leaky ReLU activation function.
+
+        Parameters
+        ----------
+        alpha : float
+            Slope for negative inputs (default 0.01).
+        """
+        self.alpha = alpha
+
+    def forward(self, inputs: np.ndarray, training=False) -> None:
+        """
+        Forward pass using Leaky ReLU.
+        """
+        self.inputs = inputs
+        self.output = np.where(inputs > 0, inputs, self.alpha * inputs)
+
+    def backward(self, delta: np.ndarray) -> None:
+        """
+        Backward pass through Leaky ReLU.
+        """
+        self.dinputs = delta.copy()
+        self.dinputs[self.inputs < 0] *= self.alpha
+
 class GELU(Activation):
     def __init__(self) -> None:
         """
@@ -167,6 +193,14 @@ class Sigmoid(Activation):
         """
         # Derivative of Sigmoid
         self.dinputs = delta * (1 - self.output) * self.output
+
+class Tanh(Activation):
+
+    def forward(self, inputs):
+        self.output = np.tanh(inputs)
+
+    def backward(self, delta):
+        self.dinputs = 1 - self.output**2
 
 class Softmax(Activation):
 

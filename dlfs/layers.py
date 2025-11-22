@@ -110,12 +110,12 @@ class ConvLayer(Layer):
         self.stride = stride
         self.padding = padding
 
-        # Create output and kernel shapes
-        self.kernel_size = kernel_size
+        fan_in = input_channels * kernel_size**2
+        std = np.sqrt(2.0 / fan_in)
 
         # Initialize layer parameters
-        self.kernels = np.random.randn(output_channels, input_channels, kernel_size, kernel_size)
-        self.biases = np.random.randn(output_channels)
+        self.kernels = std * np.random.randn(output_channels, input_channels, kernel_size, kernel_size)
+        self.biases = np.zeros(output_channels)
 
     def forward(self, inputs, training=False):
 
@@ -168,12 +168,12 @@ class ConvTransposeLayer(Layer):
         self.padding = padding
         self.output_padding = output_padding
 
-        # Create output and kernel shapes
-        self.kernel_size = kernel_size
+        fan_in = input_channels * kernel_size**2
+        std = np.sqrt(2.0 / fan_in)
 
         # Initialize layer parameters
-        self.kernels = np.random.randn(input_channels, output_channels, kernel_size, kernel_size)
-        self.biases = np.random.randn(output_channels)
+        self.kernels = std * np.random.randn(input_channels, output_channels, kernel_size, kernel_size)
+        self.biases = np.zeros(output_channels)
 
     def forward(self, inputs: np.ndarray, training=False) -> None:
         C_in, C_out, kH, kW = self.kernels.shape
@@ -199,7 +199,7 @@ class ConvTransposeLayer(Layer):
         
         B, C_out, out_H, out_W = delta.shape
         C_in, _, kH, kW = self.kernels.shape
-        delta_col, _, _ = im2col(delta, kernel_shape=(kH, kW), stride=self.stride, padding=self.padding) # (B, C_out*kH*kW, H_out*W_out)
+        delta_col, _, _ = im2col_strided(delta, kernel_shape=(kH, kW), stride=self.stride, padding=self.padding) # (B, C_out*kH*kW, H_out*W_out)
 
         self.dkernels = self.Y_col @ delta_col.transpose(0, 2, 1) # # (B, C_in, H_in*W_in) x (B, H_in*W_in, C_out*kH*kW) = (B, C_in, C_out*kH*kW)
         self.dkernels = np.sum(self.dkernels, axis=0)

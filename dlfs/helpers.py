@@ -267,41 +267,56 @@ def col2im_strided(cols, output_shape, kernel_shape, stride=1, padding=0):
 
 #### Dataset helpers ####
 
-def load_mnist_images(file_path):
-    with open(file_path, 'rb') as f:
-        # Read the header information
-        magic_number, num_images, rows, cols = struct.unpack(">IIII", f.read(16))
-        # Read the image data
-        images = np.fromfile(f, dtype=np.uint8).reshape(num_images, rows, cols)
-        return images
+class DLFSData:
+
+    @staticmethod
+    def load_MNIST_images(file_path):
+        with open(file_path, 'rb') as f:
+            # Read the header information
+            magic_number, num_images, rows, cols = struct.unpack(">IIII", f.read(16))
+            # Read the image data
+            images = np.fromfile(f, dtype=np.uint8).reshape(num_images, rows, cols)
+            return images
+        
+    @staticmethod
+    def load_MNIST_labels(file_path):
+        with open(file_path, 'rb') as f:
+            # Read the header information
+            magic_number, num_labels = struct.unpack(">II", f.read(8))
+            # Read the label data
+            labels = np.fromfile(f, dtype=np.uint8)
+            return labels
+
+    @staticmethod
+    def load_MNIST(folder_path):
+        path_train_data = folder_path + "/train-images.idx3-ubyte"
+        path_train_labels = folder_path + "/train-labels.idx1-ubyte"
+        path_test_data = folder_path + "/t10k-images.idx3-ubyte"
+        path_test_labels = folder_path + "/t10k-labels.idx1-ubyte"
+
+        X_train = DLFSData.load_MNIST_images(path_train_data)
+        y_train = DLFSData.load_MNIST_labels(path_train_labels)
+
+        X_test = DLFSData.load_MNIST_images(path_test_data)
+        y_test = DLFSData.load_MNIST_labels(path_test_labels)
+
+        return X_train, y_train, X_test, y_test
+
+    @staticmethod
+    def normalize_MNIST(x, range: tuple = (0, 1)):
+        if range == (0, 1):
+            x = x.astype("float32") / 255
+        elif range == (-1, 1):
+            x = x.astype("float32") / 127.5 - 1
+        return x
     
-def load_mnist_labels(file_path):
-    with open(file_path, 'rb') as f:
-        # Read the header information
-        magic_number, num_labels = struct.unpack(">II", f.read(8))
-        # Read the label data
-        labels = np.fromfile(f, dtype=np.uint8)
-        return labels
-    
-def load_mnist(path_train_data, path_train_labels, path_test_data, path_test_labels):
-    X_train = load_mnist_images(path_train_data)
-    y_train = load_mnist_labels(path_train_labels)
-
-    X_test = load_mnist_images(path_test_data)
-    y_test = load_mnist_labels(path_test_labels)
-
-    return X_train, y_train, X_test, y_test
-
-def preprocess_whole_mnist(x):
-    x = x.astype("float32") / 255
-    return x
-
-def select_mnist_labels(x, y, labels: list, limit):
-    label_indices = []
-    for l in labels:
-        label_index = np.where(y == l)[0][:limit]
-        label_indices.append(label_index)
-    all_indices = np.hstack(label_indices)
-    all_indices = np.random.permutation(all_indices)
-    x, y = x[all_indices], y[all_indices]
-    return x, y
+    @staticmethod
+    def select_MNIST_labels(x, y, labels: list, limit):
+        label_indices = []
+        for l in labels:
+            label_index = np.where(y == l)[0][:limit]
+            label_indices.append(label_index)
+        all_indices = np.hstack(label_indices)
+        all_indices = np.random.permutation(all_indices)
+        x, y = x[all_indices], y[all_indices]
+        return x, y

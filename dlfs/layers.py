@@ -26,8 +26,8 @@ class DenseLayer(Layer):
         """
 
         # Weights are randomly initialized, small random numbers seem to work well
-        lim = np.sqrt(2 / n_inputs)
-        self.weights = lim * np.random.randn(n_inputs, n_neurons)
+        lim = np.sqrt(1 / n_inputs)
+        self.weights = np.random.uniform(-lim, lim, size=(n_inputs, n_neurons))
         # Bias vector is initialized to a zero vector
         self.biases = np.zeros(n_neurons)
 
@@ -111,10 +111,10 @@ class ConvLayer(Layer):
         self.padding = padding
 
         fan_in = input_channels * kernel_size**2
-        std = np.sqrt(2.0 / fan_in)
+        std = np.sqrt(1.0 / fan_in)
 
         # Initialize layer parameters
-        self.kernels = std * np.random.randn(output_channels, input_channels, kernel_size, kernel_size)
+        self.kernels = np.random.uniform(-std, std, size=(output_channels, input_channels, kernel_size, kernel_size))
         self.biases = np.zeros(output_channels)
 
     def forward(self, inputs, training=False):
@@ -169,10 +169,10 @@ class ConvTransposeLayer(Layer):
         self.output_padding = output_padding
 
         fan_in = input_channels * kernel_size**2
-        std = np.sqrt(2.0 / fan_in)
+        std = np.sqrt(1.0 / fan_in)
 
         # Initialize layer parameters
-        self.kernels = std * np.random.randn(input_channels, output_channels, kernel_size, kernel_size)
+        self.kernels = np.random.uniform(-std, std, size=(input_channels, output_channels, kernel_size, kernel_size))
         self.biases = np.zeros(output_channels)
 
     def forward(self, inputs: np.ndarray, training=False) -> None:
@@ -788,7 +788,7 @@ class LayerNorm(Layer):
     
     def backward(self, delta: np.ndarray) -> None:
         """
-        Backward pass using LayerNorm. Creates dinputs gradient attribute.
+        Backward pass using LayerNorm. Creates gradient attributes with respect to gamma, beta and inputs.
 
         Parameters
         ----------
@@ -812,6 +812,82 @@ class LayerNorm(Layer):
         # Gradients w.r.t input using LayerNorm formula
         dvar = np.sum(dx_hat * self.centered * -0.5 * self.std_inv**3, axis=-1, keepdims=True)
         dmean = np.sum(-dx_hat * self.std_inv, axis=-1, keepdims=True) + dvar * np.mean(-2.0 * self.centered, axis=-1, keepdims=True)
+
+        self.dinputs = dx_hat * self.std_inv + dvar * 2.0 * self.centered / N + dmean / N
+
+    def get_parameters(self):
+        param_names = ["gamma", "beta"]
+        return super()._filter_parameters(param_names)
+
+class BatchNorm2D(Layer):
+    
+    def __init__(self, num_features: int, epsilon: float = 1e-5) -> None:
+        """
+        Batch Normalization implementation for image tensors of shape (B, C, H, W).
+        BatchNorm2D normalizes over B, H and W axes.
+
+        Parameters
+        ----------
+        num_features : int
+            The number of features of the input array. 
+        
+        epsilon : float, default=1e-5
+            A small constant added to the denominator during normalization to prevent division by zero 
+            and to maintain numerical stability.
+        """
+        self.epsilon = epsilon
+        
+        self.gamma = np.ones(num_features)
+        self.beta = np.zeros(num_features)
+        
+    def forward(self, inputs: np.ndarray, training: bool = False):
+        """
+        Forward pass using BatchNorm2D. Creates output attribute.
+        
+        Parameters
+        ----------
+        inputs : np.ndarray
+            Input array of shape `(B, C, H, W)` to be normalized.
+
+        training : bool, default=False
+            Flag indicating whether dropout is applied or not (used for API consistency).
+
+        Returns
+        -------
+        None
+        """
+        self.inputs = inputs
+
+        mean = np.mean(inputs, axis=(0, 2, 3), keepdims=True)
+        variance = np.var(inputs, axis=(0, 2, 3), keepdims=True)
+        self.std_inv = 1.0 / np.sqrt(variance + self.epsilon)
+
+        self.centered = self.inputs - mean
+        self.normalized = self.centered * self.std_inv
+        self.output = self.gamma[None, :, None, None] * self.normalized + self.beta[None, :, None, None]
+    
+    def backward(self, delta: np.ndarray) -> None:
+        """
+        Backward pass using BatchNorm2D. Creates gradient attributes with respect to gamma, beta and inputs.
+
+        Parameters
+        ----------
+        delta : np.ndarray
+            Upstream gradient of shape `(B, C, H, W)` obtained by backpropagation.
+
+        Returns
+        -------
+        None
+        """
+        N = np.prod(self.inputs.shape) // self.inputs.shape[1]  # N*H*W
+
+        self.dgamma = np.sum(delta * self.normalized, axis=(0, 2, 3), keepdims=False)
+        self.dbeta = np.sum(delta, axis=(0, 2, 3), keepdims=False)
+
+        dx_hat = delta * self.gamma[None, :, None, None]
+
+        dvar = np.sum(dx_hat * self.centered * -0.5 * self.std_inv**3, axis=(0, 2, 3), keepdims=True)
+        dmean = np.sum(-dx_hat * self.std_inv, axis=(0, 2, 3), keepdims=True) + dvar * np.mean(-2.0 * self.centered, axis=(0, 2, 3), keepdims=True)
 
         self.dinputs = dx_hat * self.std_inv + dvar * 2.0 * self.centered / N + dmean / N
 

@@ -202,6 +202,16 @@ class Tanh(Activation):
     def backward(self, delta):
         self.dinputs = 1 - self.output**2
 
+class SiLU(Activation):
+
+    def forward(self, inputs, training=False):
+        self.inputs = inputs
+        self.sigma = np.where(inputs >= 0, 1 / (1 + np.exp(-inputs)), np.exp(inputs) / (1 + np.exp(inputs)))
+        self.output = inputs * self.sigma
+
+    def backward(self, delta):
+        self.dinputs = delta * self.sigma * (1 + self.inputs * (1 - self.sigma))
+
 class Softmax(Activation):
 
     def __init__(self) -> None:

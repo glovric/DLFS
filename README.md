@@ -20,6 +20,10 @@ Architectures currently implemented:
 
 - Transformer
 
+- Variational Autoencoder
+
+- Diffusion
+
 ## uv Setup
 
 1. **Create virtual environment and install dependencies**:

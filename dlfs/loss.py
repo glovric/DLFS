@@ -175,3 +175,91 @@ class CCE_Loss(Loss):
         else:
             self.dinputs = -y_true / y_pred
             self.dinputs = self.dinputs / samples
+
+class VAE_Loss(Loss):
+
+    def __init__(self, recon_loss: Loss) -> None:
+        """
+        Variational Autoencoder loss function consisting of reconstruction loss and KL divergence loss.
+
+        Parameters
+        ----------
+        recon_loss : Loss
+            Loss function used to learn reconstruction of data.
+        """
+        self.recon_loss = recon_loss()
+
+    def calculate(self, y_pred: np.ndarray, y_true: np.ndarray, mu: np.ndarray, logvar: np.ndarray, kl_beta: float = 1.0) -> tuple[float, float, float]:
+        """
+        Calculate Variational Autoencoder loss.
+
+        Parameters
+        ----------
+        y_pred : np.ndarray
+            Predicted values.
+
+        y_true : np.ndarray
+            True values.
+
+        mu : np.ndarray
+            Mean of the latent space distribution.
+
+        logvar : np.ndarray
+            Log variance of the latent space distribution.
+
+        kl_beta : float, default=1.0
+            Scaling term of the KL divergence loss. Used during KL warmup in training.
+
+        Returns
+        -------
+        rec_loss, kl_loss, total_loss : tuple[float, float, float]
+            Separate recon, KL, and cumulative loss.
+        """
+
+        # Calculate recon loss
+        recon_loss = self.recon_loss.calculate(y_pred, y_true)
+
+        # Calculate KL divergence loss
+        kl_loss = -0.5* np.mean(np.sum(1 + logvar - mu**2 - np.exp(logvar), axis=1))
+
+        # Add up two losses
+        total_loss = recon_loss + kl_beta * kl_loss
+
+        return recon_loss, kl_beta * kl_loss, total_loss
+
+    def backward(self, y_pred, y_true, mu, logvar, kl_beta=1.0) -> None:
+        """
+        Backward pass using Variational Autoencoder loss. Creates gradient attributes with respect to mean and log variance.
+
+        Parameters
+        ----------
+        y_pred : np.ndarray
+            Predicted values.
+
+        y_true : np.ndarray
+            True values.
+
+        mu : np.ndarray
+            Mean of the latent space distribution.
+
+        logvar : np.ndarray
+            Log variance of the latent space distribution.
+
+        kl_beta : float, default=1.0
+            Scaling term of the KL divergence loss. Used during KL warmup in training.
+
+        Returns
+        -------
+        None
+        """
+
+        # Calculate recon loss gradient
+        self.recon_loss.backward(y_pred, y_true)
+
+        # Calculate KL divergence gradients
+        dmu = mu
+        dlogvar = -0.5 * (1 - np.exp(logvar))
+
+        # Scale KL divergence gradients by kl_beta
+        self.dmu = kl_beta * dmu
+        self.dlogvar = kl_beta * dlogvar

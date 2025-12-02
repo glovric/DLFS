@@ -1029,3 +1029,257 @@ class Transformer(Module):
             print(f'Encoder MHA {i}: {np.linalg.norm(self.encoder_layers[i].mha.dinputs_query)} | {np.linalg.norm(self.encoder_layers[i].mha.dinputs_context)}')
             print(f'Encoder dipnuts {i}: {np.linalg.norm(self.encoder_layers[i].dinputs)}')
         print(f'------------------------------------------')
+
+class VAE(Module):
+
+    def __init__(self, encoder: Module, decoder: Module, 
+                       mu: Module, logvar: Module, 
+                       loss_function: Loss = None, optimizer: Optimizer = None):
+        """
+        Variational Autoencoder generative model.
+
+        Parameters
+        ----------
+        encoder: Module
+            Encoder part of VAE.
+
+        decoder: Module
+            Decoder part of VAE.
+
+        mu: Module
+            Feed-forward network for predicting mean of distribution.
+
+        logvar: Module
+            Feed-forward network for predicting log variance of distribution.
+        
+        loss_function : Loss, default=None
+            Loss function.
+        
+        optimizer : Optimizer, default=None
+            Optimizer algorithm.
+        """
+        self.encoder = encoder
+        self.decoder = decoder
+        self.mu = mu
+        self.logvar = logvar
+        self.loss_function = loss_function
+        self.optimizer = optimizer
+
+    def _reparametrize(self, mu: np.ndarray, logvar: np.ndarray) -> None:
+        """
+        Helper method for the reparametrization trick. Creates latent variable attribute.
+
+        Parameters
+        ----------
+        mu : np.ndarray
+            Mean used to calculate latent variable.
+
+        logvar : np.ndarray
+            Log variance used to calculate latent variable.
+
+        Returns
+        -------
+        None
+        """
+        self.std = np.exp(0.5 * logvar)
+        self.eps = np.random.randn(*self.std.shape)  # random noise
+        self.z = mu + self.eps * self.std
+
+    def _reparametrize_backward(self, decoder_dinputs: np.ndarray, grad_kl_mu: np.ndarray, grad_kl_logvar: np.ndarray) -> None:
+        """
+        Helper method for the backpropagation of reparametrization trick. Creates mu and logvar gradient attributes.
+
+        Parameters
+        ----------
+        decoder_dinputs : np.ndarray
+            Decoder upstream gradient.
+
+        grad_kl_mu : np.ndarray
+            Mean upstream gradient from KL loss.
+
+        grad_kl_logvar : np.ndarray
+            Log variance upstream gradient from KL loss.
+
+        Returns
+        -------
+        None
+        """
+        self.dmu = decoder_dinputs * 1 + grad_kl_mu
+        self.dlogvar = decoder_dinputs * (0.5 * self.eps * self.std) + grad_kl_logvar
+
+    def forward(self, x: np.ndarray, training: bool = False) -> None:
+        """
+        Forward pass for the Variational Autoencoder model. Creates output attribute.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Input array.
+
+        training : bool, default=False
+            A flag indicating whether the model is in training mode (`True`) or inference mode (`False`).
+            This controls dropout, which is only applied during training.
+
+        Returns
+        -------
+        None
+        """
+
+        # Pass data through encoder
+        self.encoder.forward(x, training=training)
+
+        # Compute distribution parameters from encoder output
+        self.mu.forward(self.encoder.output, training=training)
+        self.logvar.forward(self.encoder.output, training=training)
+
+        # Using distribution parameters apply the reparametrization
+        self._reparametrize(self.mu.output, self.logvar.output)
+
+        # Pass sampled latent variable from reparametrization through decoder 
+        self.decoder.forward(self.z, training=training)
+
+        # Network output is the decoder output
+        self.output = self.decoder.output
+
+    def backward(self, y_true: np.ndarray, kl_beta: float) -> None:
+        """
+        Backward pass for the Variational Autoencoder model.
+
+        Parameters
+        ----------
+        y_true : np.ndarray
+            Original inputs used to compute the loss function gradient.
+
+        kl_beta : float
+            Coefficient used to scale the KL divergence loss and gradients during the KL warmup phase.
+
+        Returns
+        -------
+        None
+        """
+
+        # Compute loss function grads
+        self.loss_function.backward(self.output, y_true, self.mu.output, self.logvar.output, kl_beta)
+        recon_grad, mu_grad, logvar_grad = self.loss_function.recon_loss.dinputs, self.loss_function.dmu, self.loss_function.dlogvar
+
+        # Backprop reconstruction loss grad through decoder
+        self.decoder.backward(recon_grad)
+
+        # Backprop decoder grad, loss function grads with respect to mu and logvar through reparametrize
+        self._reparametrize_backward(self.decoder.dinputs, mu_grad, logvar_grad)
+
+        # Backprop distribution grads through their respective ffwd nets
+        self.mu.backward(self.dmu)
+        self.logvar.backward(self.dlogvar)
+
+        # Add up the distribution parameter grads for encoder
+        total_enc_grad = self.mu.dinputs + self.logvar.dinputs
+
+        # Backprop through encoder
+        self.encoder.backward(total_enc_grad)
+
+    def train(self, X: np.ndarray, epochs: int = 1000, batch_size: int = None, print_every: int = None, kl_warmup_steps: int = 0) -> None:
+        """
+        Train the VAE model for a specified number of epochs, updating parameters using backpropagation.
+
+        Parameters
+        ----------
+        X : np.ndarray
+            Input and ground truth output data for the model.
+
+        epochs : int, default=1000
+            The number of epochs to train the model.
+
+        batch_size : int, default=None
+            The size of the batch to use for each training step. If `None`, the entire dataset is used
+            for each forward/backward pass.
+
+        print_every : int, default=None
+            If provided, will print the current loss value every 
+            `print_every` epochs.
+
+        kl_warmup_steps : int, default=0
+            Number of training epochs to apply the KL divergence downscaling. 
+            This is done in order for the model to learn to reconstruct data before regularizing the latent space.
+
+        Returns
+        -------
+        None
+        """
+
+        # Store recon and kl losses separately
+        self.rec_loss = []
+        self.kl_loss = []
+
+        for i in range(epochs + 1):
+
+            if kl_warmup_steps and kl_warmup_steps > 0:
+                # Linear kl_beta during warmup
+                self.kl_beta = min(1.0, (i + 1) / float(kl_warmup_steps))
+            else:
+                self.kl_beta = 1.0
+
+            if batch_size is None:
+
+                # Forward pass
+                self.forward(X, training=True)
+
+                # Backward pass
+                self.backward(X, self.kl_beta)
+
+                # Update parameters
+                self.optimizer.pre_update_parameters()
+                self.optimizer.update_parameters(self)
+                self.optimizer.post_update_parameters()
+
+                # Caluculate and record losses
+                rec_l, kl_l, loss = self.loss_function.calculate(self.output, X, self.mu.output, self.logvar.output, self.kl_beta)
+                self.rec_loss.append(rec_l)
+                self.kl_loss.append(kl_l)
+
+                if print_every is not None:
+                    if not i % print_every:
+                        print(f'===== EPOCH : {i} ===== LOSS : {loss:.5f} (Recon: {rec_l:.5f} | KL: {kl_l:.5f})')
+
+            else:
+
+                batch_loss = 0
+                rec_loss = 0
+                kl_loss = 0
+                num_batches = 0
+
+                for j in range(0, len(X), batch_size):
+
+                    # Subset data into a batch
+                    batch_X = X[j:j+batch_size, :]
+
+                    # Forward pass
+                    self.forward(batch_X)
+
+                    # Calculate current batch loss
+                    rec, kl, loss = self.loss_function.calculate(self.output, batch_X, self.mu.output, self.logvar.output)
+
+                    batch_loss += loss
+                    rec_loss += rec
+                    kl_loss += kl
+                    num_batches += 1
+
+                    # Backward pass
+                    self.backward(batch_X, self.kl_beta)
+
+                    # Update parameters
+                    self.optimizer.pre_update_parameters()
+                    self.optimizer.update_parameters(self)
+                    self.optimizer.post_update_parameters()
+
+                # Record average batch losses
+                avg_batch_loss = batch_loss / num_batches
+                avg_rec_loss = rec_loss / num_batches
+                avg_kl_loss = kl_loss / num_batches
+
+                self.rec_loss.append(avg_rec_loss)
+                self.kl_loss.append(avg_kl_loss)
+
+                if print_every is not None:
+                    if not i % print_every:
+                        print(f'===== EPOCH : {i} ===== LOSS : {avg_batch_loss:.5f} (Recon: {avg_rec_loss:.5f} | KL: {avg_kl_loss:.5f}) =====')

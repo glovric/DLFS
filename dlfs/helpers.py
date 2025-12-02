@@ -311,13 +311,21 @@ class DLFSData:
         return x
     
     @staticmethod
-    def select_MNIST_labels(x, y, labels: list, limit, shuffle=True):
+    def select_MNIST_labels(x, y, labels: list, limit=None, shuffle=True):
         label_indices = []
+
         for l in labels:
-            label_index = np.where(y == l)[0][:limit]
+            if limit is not None:
+                label_index = np.where(y == l)[0][:limit]
+            else:
+                label_index = np.where(y == l)[0]
+
             label_indices.append(label_index)
+
         all_indices = np.hstack(label_indices)
+
         if shuffle:
             all_indices = np.random.permutation(all_indices)
+
         x, y = x[all_indices], y[all_indices]
         return x, y

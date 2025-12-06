@@ -1034,7 +1034,7 @@ class VAE(Module):
 
     def __init__(self, encoder: Module, decoder: Module, 
                        mu: Module, logvar: Module, 
-                       loss_function: Loss = None, optimizer: Optimizer = None):
+                       loss_function = None, optimizer = None):
         """
         Variational Autoencoder generative model.
 

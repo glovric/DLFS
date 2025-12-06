@@ -20,9 +20,11 @@ Architectures currently implemented:
 
 - Transformer
 
-- Variational Autoencoder
+- Variational Autoencoder (VAE)
 
 - Diffusion
+
+- Generative Adversarial Network (GAN)
 
 ## uv Setup
 

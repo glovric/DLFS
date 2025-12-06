@@ -176,7 +176,7 @@ class Sigmoid(Activation):
         -------
         None
         """
-        self.output = 1 / (1 + np.exp(-inputs))
+        self.output = np.where(inputs >= 0, 1 / (1 + np.exp(-inputs)), np.exp(inputs) / (1 + np.exp(inputs)))
 
     def backward(self, delta: np.ndarray) -> None:
         """
@@ -196,7 +196,7 @@ class Sigmoid(Activation):
 
 class Tanh(Activation):
 
-    def forward(self, inputs):
+    def forward(self, inputs, training=False):
         self.output = np.tanh(inputs)
 
     def backward(self, delta):

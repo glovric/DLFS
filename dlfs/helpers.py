@@ -311,8 +311,11 @@ class DLFSData:
         return x
     
     @staticmethod
-    def select_MNIST_labels(x, y, labels: list, limit=None, shuffle=True):
+    def select_MNIST_labels(x, y, labels: list = None, limit=None, shuffle=True):
         label_indices = []
+
+        if labels is None:
+            labels = range(10)
 
         for l in labels:
             if limit is not None:

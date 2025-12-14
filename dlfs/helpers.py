@@ -309,6 +309,16 @@ class DLFSData:
         elif range == (-1, 1):
             x = x.astype("float32") / 127.5 - 1
         return x
+
+    @staticmethod
+    def denormalize_MNIST(x, range: tuple = (0, 1)):
+        if range == (0, 1):
+            x = x * 255.0
+        elif range == (-1, 1):
+            x = (x + 1.0) * 127.5
+        
+        x = np.clip(x, 0, 255)
+        return x.astype(np.uint8)
     
     @staticmethod
     def select_MNIST_labels(x, y, labels: list = None, limit=None, shuffle=True):

@@ -1,14 +1,14 @@
 import numpy as np
 from .base import Loss
-from .activation import Softmax
+from .activation import Softmax, Sigmoid
 
 class BCE_Loss(Loss):
 
-    def __init__(self) -> None:
+    def __init__(self, from_logits=True) -> None:
         """
         Binary Cross Entropy loss function.
         """
-        pass
+        self.from_logits = from_logits
 
     def calculate(self, y_pred: np.ndarray, y_true: np.ndarray) -> float:
         """
@@ -26,9 +26,14 @@ class BCE_Loss(Loss):
         -------
         loss : float
         """
-        # Clip y_pred so logarithm doesn't become unstable
-        y_pred_clipped = np.clip(y_pred, 1e-7, 1-1e-7)
-        loss = -(y_true * np.log(y_pred_clipped) + (1 - y_true) * np.log(1 - y_pred_clipped))
+        if self.from_logits:
+            x = y_pred
+            loss = np.maximum(x, 0) - x * y_true + np.log1p(np.exp(-np.abs(x)))
+        else:
+            # Clip y_pred so logarithm doesn't become unstable
+            y_pred_clipped = np.clip(y_pred, 1e-7, 1-1e-7)
+            loss = -(y_true * np.log(y_pred_clipped) + (1 - y_true) * np.log(1 - y_pred_clipped))
+
         return np.mean(np.sum(loss, axis=1))
     
     def backward(self, y_pred: np.ndarray, y_true: np.ndarray) -> None:
@@ -47,10 +52,14 @@ class BCE_Loss(Loss):
         -------
         None
         """
-        # Clip y_pred so the denominator doesn't become unstable
-        y_pred_clipped = np.clip(y_pred, 1e-7, 1-1e-7)
-        # Derivative of BCE with respect to y_pred
-        self.dinputs = (y_pred_clipped - y_true) / (y_pred_clipped * (1 - y_pred_clipped))
+        if self.from_logits:
+            sig = Sigmoid.calculate(y_pred)
+            self.dinputs = (sig - y_true) / y_true.shape[0]
+        else:
+            # Clip y_pred so the denominator doesn't become unstable
+            y_pred_clipped = np.clip(y_pred, 1e-7, 1-1e-7)
+            # Derivative of BCE with respect to y_pred
+            self.dinputs = (y_pred_clipped - y_true) / (y_pred_clipped * (1 - y_pred_clipped))
 
 class MSE_Loss(Loss):
 

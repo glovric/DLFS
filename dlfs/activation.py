@@ -163,6 +163,11 @@ class Sigmoid(Activation):
         """
         pass
 
+    @staticmethod
+    def calculate(inputs: np.ndarray) -> np.ndarray:
+        inputs = np.clip(inputs, -30, 30)
+        return np.where(inputs >= 0, 1 / (1 + np.exp(-inputs)), np.exp(inputs) / (1 + np.exp(inputs)))
+
     def forward(self, inputs: np.ndarray, training = False) -> None:
         """
         Forward pass using Sigmoid. Creates output attribute.
@@ -176,6 +181,7 @@ class Sigmoid(Activation):
         -------
         None
         """
+        inputs = np.clip(inputs, -30, 30)
         self.output = np.where(inputs >= 0, 1 / (1 + np.exp(-inputs)), np.exp(inputs) / (1 + np.exp(inputs)))
 
     def backward(self, delta: np.ndarray) -> None:

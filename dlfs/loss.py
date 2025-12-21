@@ -4,7 +4,7 @@ from .activation import Softmax, Sigmoid
 
 class BCE_Loss(Loss):
 
-    def __init__(self, from_logits=True) -> None:
+    def __init__(self, from_logits=False) -> None:
         """
         Binary Cross Entropy loss function.
         """
@@ -109,7 +109,7 @@ class MSE_Loss(Loss):
 
 class CCE_Loss(Loss):
 
-    def __init__(self, from_logits: bool = True) -> None:
+    def __init__(self, from_logits: bool = False) -> None:
         """
         Categorical Cross Entropy loss function.
         """

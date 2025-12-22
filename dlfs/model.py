@@ -2,7 +2,7 @@ import numpy as np
 from .base import Layer, Activation, Loss, Optimizer, Module
 from .activation import ReLU, Softmax
 from .layers import EmbeddingLayer, PositionalEncoding, LayerNorm, DenseLayer
-from .modules import TransformerDecoder
+from .modules import TransformerDecoder, SequentialWrapper
 from .helpers import get_random_batch
 
 class SequentialModel(Module):
@@ -22,10 +22,7 @@ class SequentialModel(Module):
         optimizer : Optimizer, default=None
             Optimizer algorithm.
         """
-        if layers is None:
-            self.layers = []
-        else:
-            self.layers = layers
+        self.wrapper = SequentialWrapper(layers)
         self.loss_function = loss_function
         self.optimizer = optimizer
 
@@ -43,15 +40,11 @@ class SequentialModel(Module):
         None
         """
 
-        # Pass data to the input layer
-        self.layers[0].forward(X, training)
+        # Pass data through SequentialWrapper
+        self.wrapper.forward(X)
 
-        # Forward data through all the layers
-        for idx, layer in enumerate(self.layers[1:], start=1):
-            layer.forward(self.layers[idx - 1].output, training)
-
-        # Output of the model is the output of the last layer
-        self.output = self.layers[-1].output
+        # Output of the model is the output of SequentialWrapper
+        self.output = self.wrapper.output
 
     def backward(self, y: np.ndarray) -> None:
         """
@@ -60,7 +53,7 @@ class SequentialModel(Module):
         Parameters
         ----------
         y : np.ndarray
-            Output values.
+            True output values.
 
         Returns
         -------
@@ -69,30 +62,7 @@ class SequentialModel(Module):
 
         # Backward pass starts with loss function gradient calculation
         self.loss_function.backward(self.output, y)
-        self.layers[-1].backward(self.loss_function.dinputs)
-
-        # Pass gradients backwards to all layers
-        for idx, layer in reversed(list(enumerate(self.layers[:-1]))):
-            layer.backward(self.layers[idx + 1].dinputs)
-
-    def _update_model_parameters(self) -> None:
-        """
-        Method for updating model parameters. 
-        Depending on the model architecture parameters are updated in different manners.
-
-        Returns
-        -------
-        None
-        """
-
-        self.optimizer.pre_update_parameters()
-
-        # Loop through all layers
-        for layer in self.layers:
-
-            self.optimizer.update_parameters(layer)
-
-        self.optimizer.post_update_parameters()
+        self.wrapper.backward(self.loss_function.dinputs)
 
     def train(self, X: np.ndarray, y: np.ndarray, epochs: int = 1000, batch_size: int = None, print_every: int = None) -> None:
         """
@@ -131,7 +101,9 @@ class SequentialModel(Module):
                 self.backward(y)
 
                 # Update parameters
-                self._update_model_parameters()
+                self.optimizer.pre_update_parameters()
+                self.optimizer.update_parameters(self.wrapper)
+                self.optimizer.post_update_parameters()
 
                 if print_every is not None:
                     if not i % print_every:
@@ -156,7 +128,9 @@ class SequentialModel(Module):
                     self.backward(batch_y)
 
                     # Update parameters
-                    self._update_model_parameters()
+                    self.optimizer.pre_update_parameters()
+                    self.optimizer.update_parameters(self.wrapper)
+                    self.optimizer.post_update_parameters()
 
                 if print_every is not None:
                     if not i % print_every:
@@ -177,21 +151,6 @@ class SequentialModel(Module):
         """
         self.forward(X, training=False)
         return self.output
-    
-    def add(self, layer : Layer | Activation) -> None:
-        """
-        Add layer to the network.
-
-        Parameters
-        ----------
-        layer : Layer | Activation_Function
-            Layer to add.
-
-        Returns
-        -------
-        None
-        """
-        self.layers.append(layer)
 
 class TransformerDecoderModel(Module):
 

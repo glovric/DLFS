@@ -46,8 +46,7 @@ def tab20b_colors_to_plotly(n):
 
     return plotly_colors, mpl_colors
 
-
-def plot_3d_output(X, y, title):
+def plot_3d_classification_output(X, y, title):
     fig3d = go.Figure()
 
     classes = np.unique(y)
@@ -82,8 +81,7 @@ def plot_3d_output(X, y, title):
 
     fig3d.show()
 
-
-def plot_1d_output(X, y, title, logits=False):
+def plot_1d_classification_output(X, y, title, logits=False):
     # Assuming X is shape (num_samples, 1)
     X = X.flatten()  # flatten to 1D for plotting
 
@@ -131,7 +129,7 @@ def plot_1d_output(X, y, title, logits=False):
     plt.tight_layout()
     plt.show()
 
-def plot_2d_output(X, y, title):
+def plot_2d_classification_output(X, y, title):
 
     classes = np.unique(y)
     _, colors = tab20b_colors_to_plotly(len(classes))
@@ -161,3 +159,58 @@ def plot_2d_output(X, y, title):
 
     plt.tight_layout()
     plt.show()
+
+def plot_1d_regression_output(X, y, title):
+    """X is 1D, y is 1D used for coloring."""
+    plt.scatter(X, np.zeros_like(X), c=y, edgecolors="k", alpha=0.7)
+    plt.title(title)
+    plt.show()
+
+def plot_2d_regression_output(X, y, title):
+    """X is 2D, y is 1D used for coloring."""
+    plt.figure(figsize=(8,5))
+
+    scatter = plt.scatter(
+        X[:, 0],
+        X[:, 1],
+        c=y,
+        s=60,
+        edgecolor='k',
+        alpha=0.9
+    )
+
+    plt.title(title, fontsize=14)
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_3d_regression_output(X, y, title):
+    """
+    X is 2D array, y is 1d array
+    """
+    fig3d = go.Figure()
+
+    fig3d.add_trace(go.Scatter3d(
+        x=X[:, 0],
+        y=X[:, 1],
+        z=X[:, 2],
+        mode='markers',
+        marker=dict(
+            size=5,
+            color=y,
+            colorscale='Viridis',
+            opacity=0.9,
+            symbol='circle'
+        )
+    ))
+
+    fig3d.update_layout(
+        title=title,
+        scene=dict(
+            xaxis_title='x_1',
+            yaxis_title='x_2',
+            zaxis_title='x_3'
+        )
+    )
+
+    fig3d.show()

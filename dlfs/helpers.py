@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import time
 import struct
 
@@ -270,7 +271,7 @@ def col2im_strided(cols, output_shape, kernel_shape, stride=1, padding=0):
 class DLFSData:
 
     @staticmethod
-    def load_MNIST_images(file_path):
+    def load_ubyte_images(file_path):
         with open(file_path, 'rb') as f:
             # Read the header information
             magic_number, num_images, rows, cols = struct.unpack(">IIII", f.read(16))
@@ -279,49 +280,33 @@ class DLFSData:
             return images
         
     @staticmethod
-    def load_MNIST_labels(file_path):
+    def load_ubyte_labels(file_path):
         with open(file_path, 'rb') as f:
             # Read the header information
             magic_number, num_labels = struct.unpack(">II", f.read(8))
             # Read the label data
             labels = np.fromfile(f, dtype=np.uint8)
             return labels
-
+        
     @staticmethod
-    def load_MNIST(folder_path):
-        path_train_data = folder_path + "/train-images.idx3-ubyte"
-        path_train_labels = folder_path + "/train-labels.idx1-ubyte"
-        path_test_data = folder_path + "/t10k-images.idx3-ubyte"
-        path_test_labels = folder_path + "/t10k-labels.idx1-ubyte"
-
-        X_train = DLFSData.load_MNIST_images(path_train_data)
-        y_train = DLFSData.load_MNIST_labels(path_train_labels)
-
-        X_test = DLFSData.load_MNIST_images(path_test_data)
-        y_test = DLFSData.load_MNIST_labels(path_test_labels)
-
-        return X_train, y_train, X_test, y_test
-
-    @staticmethod
-    def normalize_MNIST(x, range: tuple = (0, 1)):
+    def normalize_images(x, range: tuple = (0, 1)):
         if range == (0, 1):
             x = x.astype("float32") / 255
         elif range == (-1, 1):
             x = x.astype("float32") / 127.5 - 1
         return x
-
+    
     @staticmethod
-    def denormalize_MNIST(x, range: tuple = (0, 1)):
+    def denormalize_images(x, range: tuple = (0, 1)):
         if range == (0, 1):
             x = x * 255.0
         elif range == (-1, 1):
             x = (x + 1.0) * 127.5
-        
         x = np.clip(x, 0, 255)
         return x.astype(np.uint8)
     
     @staticmethod
-    def select_MNIST_labels(x, y, labels: list = None, limit=None, shuffle=True):
+    def select_image_labels(x, y, labels: list = None, limit=None, shuffle=True):
         label_indices = []
 
         if labels is None:
@@ -342,3 +327,54 @@ class DLFSData:
 
         x, y = x[all_indices], y[all_indices]
         return x, y
+
+
+    class MNIST:
+
+        @staticmethod
+        def load_MNIST(folder_path):
+            path_train_data = folder_path + "/train-images.idx3-ubyte"
+            path_train_labels = folder_path + "/train-labels.idx1-ubyte"
+            path_test_data = folder_path + "/t10k-images.idx3-ubyte"
+            path_test_labels = folder_path + "/t10k-labels.idx1-ubyte"
+
+            X_train = DLFSData.load_ubyte_images(path_train_data)
+            y_train = DLFSData.load_ubyte_labels(path_train_labels)
+
+            X_test = DLFSData.load_ubyte_images(path_test_data)
+            y_test = DLFSData.load_ubyte_labels(path_test_labels)
+
+            return X_train, y_train, X_test, y_test
+        
+    class FashionMNIST:
+
+        @staticmethod
+        def load_fashion_MNIST(folder_path, from_ubyte = False):
+
+            if from_ubyte:
+                path_train_data = folder_path + "/train-images-idx3-ubyte"
+                path_train_labels = folder_path + "/train-labels-idx1-ubyte"
+                path_test_data = folder_path + "/t10k-images-idx3-ubyte"
+                path_test_labels = folder_path + "/t10k-labels-idx1-ubyte"
+
+                X_train = DLFSData.load_ubyte_images(path_train_data)
+                y_train = DLFSData.load_ubyte_labels(path_train_labels)
+
+                X_test = DLFSData.load_ubyte_images(path_test_data)
+                y_test = DLFSData.load_ubyte_labels(path_test_labels)
+
+            else:
+                path_train = folder_path + "/fashion-mnist_train.csv"
+                path_test = folder_path + "/fashion-mnist_test.csv"
+                data_train = pd.read_csv(path_train)
+                data_test = pd.read_csv(path_test)
+
+                X_train = data_train.drop('label', axis=1).to_numpy()
+                X_train = np.reshape(X_train, (-1, 28, 28))
+                y_train = data_train['label'].to_numpy()
+
+                X_test = data_test.drop('label', axis=1).to_numpy()
+                X_test = np.reshape(X_test, (-1, 28, 28))
+                y_test = data_test['label'].to_numpy()
+
+            return X_train, y_train, X_test, y_test

@@ -92,49 +92,26 @@ class SequentialModel(Module):
 
         for i in range(epochs + 1):
 
-            if batch_size is None:
-
-                # Forward pass
-                self.forward(X, training=True)
-
-                # Backward pass
-                self.backward(y)
-
-                # Update parameters
-                self.optimizer.pre_update_parameters()
-                self.optimizer.update_parameters(self.wrapper)
-                self.optimizer.post_update_parameters()
-
-                if print_every is not None:
-                    if not i % print_every:
-                        print(f'===== EPOCH : {i} ===== LOSS : {self.loss_function.calculate(self.output, y):.5f} =====')
-
+            if batch_size is not None:
+                batch_X, batch_y = get_random_batch(X, y, batch_size=batch_size)
             else:
+                # If batch size is not specified take the whole dataset
+                batch_X, batch_y = X, y
 
-                batch_loss = 0
+            # Forward pass
+            self.forward(batch_X, training=True)
 
-                for j in range(0, len(X), batch_size):
+            # Backward pass
+            self.backward(batch_y)
 
-                    # Subset data into a batch
-                    batch_X = X[j:j+batch_size, :]
-                    batch_y = y[j:j+batch_size]
+            # Update parameters
+            self.optimizer.pre_update_parameters()
+            self.optimizer.update_parameters(self.wrapper)
+            self.optimizer.post_update_parameters()
 
-                    # Forward pass
-                    self.forward(batch_X)
-
-                    batch_loss += self.loss_function.calculate(self.output, batch_y)
-
-                    # Backward pass
-                    self.backward(batch_y)
-
-                    # Update parameters
-                    self.optimizer.pre_update_parameters()
-                    self.optimizer.update_parameters(self.wrapper)
-                    self.optimizer.post_update_parameters()
-
-                if print_every is not None:
-                    if not i % print_every:
-                        print(f'===== EPOCH : {i} ===== LOSS : {batch_loss:.5f} =====')
+            if print_every is not None:
+                if not i % print_every:
+                    print(f'===== EPOCH : {i} ===== LOSS : {self.loss_function.calculate(self.output, batch_y):.5f} =====')
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """

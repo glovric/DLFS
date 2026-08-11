@@ -153,6 +153,9 @@ def plot_2d_classification_output(X, y, title):
 
     plt.title(title, fontsize=14)
 
+    plt.xlabel("Neuron 1")
+    plt.ylabel("Neuron 2")
+
     # Color legend
     cbar = plt.colorbar(scatter, boundaries=bounds, ticks=classes)
     cbar.set_label('Class label', fontsize=12)
@@ -160,13 +163,16 @@ def plot_2d_classification_output(X, y, title):
     plt.tight_layout()
     plt.show()
 
-def plot_1d_regression_output(X, y, title):
-    """X is 1D, y is 1D used for coloring."""
+def plot_1d_regression_data(X, y, title):
+    """
+    Plots elements of X onto a horizontal number line (x axis).
+    X is 1D array, y is 1D array used for coloring.
+    """
     plt.scatter(X, np.zeros_like(X), c=y, edgecolors="k", alpha=0.7)
     plt.title(title)
     plt.show()
 
-def plot_2d_regression_output(X, y, title):
+def plot_2d_regression_data(X, y, title, axis1, axis2):
     """X is 2D, y is 1D used for coloring."""
     plt.figure(figsize=(8,5))
 
@@ -181,16 +187,19 @@ def plot_2d_regression_output(X, y, title):
 
     plt.title(title, fontsize=14)
 
+    plt.xlabel(axis1)
+    plt.ylabel(axis2)
+
     plt.tight_layout()
     plt.show()
 
-def plot_3d_regression_output(X, y, title):
+def plot_3d_regression_data(X, y, title):
     """
     X is 2D array, y is 1d array
     """
-    fig3d = go.Figure()
+    fig = go.Figure()
 
-    fig3d.add_trace(go.Scatter3d(
+    fig.add_trace(go.Scatter3d(
         x=X[:, 0],
         y=X[:, 1],
         z=X[:, 2],
@@ -204,13 +213,100 @@ def plot_3d_regression_output(X, y, title):
         )
     ))
 
-    fig3d.update_layout(
+    fig.update_layout(
         title=title,
         scene=dict(
-            xaxis_title='x_1',
-            yaxis_title='x_2',
-            zaxis_title='x_3'
+            xaxis_title='Neuron 1',
+            yaxis_title='Neuron 2',
+            zaxis_title='Neuron 3'
         )
     )
 
-    fig3d.show()
+    fig.show()
+
+def plot_2d_reg_problem(X, y, curve=None, f=None, title="", curve_label="Curve", resolution=100):
+
+    input_range = None
+    plt.scatter(X, y, c=y, edgecolors="k", alpha=0.7)
+
+    if f is not None and curve is None:
+        input_range = np.linspace(X.min(), X.max(), resolution)
+        with np.errstate(invalid='ignore', divide='ignore'):
+            curve = f(input_range)
+        curve[~np.isfinite(curve)] = np.nan
+    
+    if curve is not None:
+        if input_range is None:
+            input_range = np.linspace(X.min(), X.max(), resolution)
+        plt.plot(input_range, curve, color="red", label=curve_label, linewidth=2)
+        plt.legend()
+
+
+    plt.title(title)
+    plt.show()
+
+def plot_3d_reg_problem(X, y, surface=None, f=None, title="", surface_label="Surface", resolution=80):
+
+    fig = go.Figure()
+    meshgrid = None
+
+    fig.add_trace(go.Scatter3d(
+        x=X[:, 0], y=X[:, 1], z=y, mode='markers',
+        marker=dict(size=3, color=y, colorscale='Viridis', opacity=0.7,
+                    colorbar=dict(title='y')),
+        name='Data',
+        hovertemplate='x1:%{x:.2f}<br>x2:%{y:.2f}<br>y:%{z:.2f}<extra></extra>'
+    ))
+
+    if surface is None and f is not None:
+        meshgrid = create_meshgrid(X, resolution)
+        X1, X2 = meshgrid
+        with np.errstate(invalid='ignore', divide='ignore'):
+            surface = f(X1, X2)
+        surface[~np.isfinite(surface)] = np.nan
+
+    if surface is not None:
+
+        if meshgrid is None:
+            meshgrid = create_meshgrid(X, resolution)
+
+        X1, X2 = meshgrid
+
+        fig.add_trace(go.Surface(
+            x=X1, y=X2, z=surface, opacity=0.45, colorscale='Blues',
+            showscale=False, name=surface_label,
+            hovertemplate='x1:%{x:.2f}<br>x2:%{y:.2f}<br>ŷ:%{z:.2f}<extra></extra>'
+
+        ))
+
+        fig.update_layout(
+            title=title, height=700,
+            scene=dict(xaxis_title='x1', yaxis_title='x2', zaxis_title='y',
+                    camera=dict(eye=dict(x=1.6, y=1.6, z=1.0))),
+            updatemenus=[
+                dict(
+                    type="buttons",
+                    direction="down",
+                    buttons=[
+                        dict(
+                            label=f"Show {surface_label}",
+                            method="restyle",
+                            args=[{"visible": [True]}, [1]]
+                        ),
+                        dict(
+                            label=f"Hide {surface_label}",
+                            method="restyle",
+                            args=[{"visible": [False]}, [1]]
+                        ),
+                    ],
+                )
+            ]
+        )
+
+    fig.show()
+
+def create_meshgrid(X, resolution):
+    x1 = np.linspace(X[:, 0].min(), X[:, 0].max(), resolution)
+    x2 = np.linspace(X[:, 1].min(), X[:, 1].max(), resolution)
+    X1, X2 = np.meshgrid(x1, x2)
+    return X1, X2

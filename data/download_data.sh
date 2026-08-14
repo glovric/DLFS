@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 
-DATA_DIR="./data"
-
-if [ ! -d "$DATA_DIR" ]; then
-    mkdir -p "$DATA_DIR"
-fi
+DATA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 URLS=(
     "https://www.kaggle.com/api/v1/datasets/download/hojjatk/mnist-dataset"

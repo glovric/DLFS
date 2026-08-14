@@ -46,7 +46,13 @@ def tab20b_colors_to_plotly(n):
 
     return plotly_colors, mpl_colors
 
-def plot_3d_classification_output(X, y, title):
+def create_meshgrid(X, resolution):
+    x1 = np.linspace(X[:, 0].min(), X[:, 0].max(), resolution)
+    x2 = np.linspace(X[:, 1].min(), X[:, 1].max(), resolution)
+    X1, X2 = np.meshgrid(x1, x2)
+    return X1, X2
+
+def plot_3d_classification_data(X, y, title):
     fig3d = go.Figure()
 
     classes = np.unique(y)
@@ -81,7 +87,7 @@ def plot_3d_classification_output(X, y, title):
 
     fig3d.show()
 
-def plot_1d_classification_output(X, y, title, logits=False):
+def plot_1d_classification_data(X, y, title, logits=False):
     # Assuming X is shape (num_samples, 1)
     X = X.flatten()  # flatten to 1D for plotting
 
@@ -129,7 +135,7 @@ def plot_1d_classification_output(X, y, title, logits=False):
     plt.tight_layout()
     plt.show()
 
-def plot_2d_classification_output(X, y, title):
+def plot_2d_classification_data(X, y, title):
 
     classes = np.unique(y)
     _, colors = tab20b_colors_to_plotly(len(classes))
@@ -304,9 +310,3 @@ def plot_3d_reg_problem(X, y, surface=None, f=None, title="", surface_label="Sur
         )
 
     fig.show()
-
-def create_meshgrid(X, resolution):
-    x1 = np.linspace(X[:, 0].min(), X[:, 0].max(), resolution)
-    x2 = np.linspace(X[:, 1].min(), X[:, 1].max(), resolution)
-    X1, X2 = np.meshgrid(x1, x2)
-    return X1, X2

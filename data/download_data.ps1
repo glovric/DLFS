@@ -1,9 +1,6 @@
 # Download data script for Windows
 
-$DataDir = ".\data"
-if (-not (Test-Path $DataDir)) {
-    New-Item -ItemType Directory -Path $DataDir | Out-Null
-}
+$DataDir = $PSScriptRoot
 
 $Urls = @(
     "https://www.kaggle.com/api/v1/datasets/download/hojjatk/mnist-dataset",

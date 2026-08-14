@@ -64,3 +64,11 @@ def make_logarithm(n_samples=100, n_features=1, noise=0.1):
         f = lambda x: np.log(x + 1)
         y = f(X) + np.random.randn(n_samples) * noise
         return X, y, f
+
+def make_xor():
+    X = np.array([[0, 0],
+                  [0, 1],
+                  [1, 0],
+                  [1, 1]])
+    y = np.array([0, 1, 1, 0])
+    return X, y

@@ -5,5 +5,5 @@ setup(
     version='0.1',
     author='daredevil9215',
     install_requires=["numpy", "scipy"],
-    packages=find_packages(include=['dlfs']),
+    packages=find_packages(include=['dlfs', 'dlfs_autograd']),
 )

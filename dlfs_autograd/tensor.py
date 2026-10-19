@@ -124,12 +124,8 @@ class Tensor:
 
         build(self)
 
-        # d(output)/d(output) = 1
         self.grad = np.ones_like(self.data)
 
-        #print(f'Kolicina ekipe u topo: {len(topo)}')
-
-        # Reverse topological order
         for v in reversed(topo):
             v._backward()
 
@@ -145,6 +141,11 @@ class Tensor:
 
         result._backward = _backward
         return result
+
+class Parameter(Tensor):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
 def sum_to_shape(grad, shape):
     """Sum gradient axes introduced by NumPy broadcasting."""

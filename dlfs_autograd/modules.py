@@ -1,10 +1,10 @@
 import numpy as np
-from .base import Module, Layer, Activation
+from .base import Module, Activation
 from .tensor import Tensor
 
 class SequentialWrapper(Module):
 
-    def __init__(self, layers: list[Layer | Module | Activation] = []) -> None:
+    def __init__(self, layers: list[Module | Activation] = []) -> None:
         """
         SequentialWrapper is module which sequentially processes input data, forwarding it through every layer.
 

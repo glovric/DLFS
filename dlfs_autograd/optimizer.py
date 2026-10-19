@@ -1,11 +1,10 @@
 import numpy as np
-
-from .tensor import Tensor
-from .base import Optimizer, Layer, Module
+from .base import Optimizer
+from .tensor import Parameter
 
 class Optimizer_SGD(Optimizer):
 
-    def __init__(self, learning_rate: float = 1e-3, momentum: float = 0., decay: float = 0.) -> None:
+    def __init__(self, parameters: list[Parameter] = [], learning_rate: float = 1e-3, momentum: float = 0., decay: float = 0.) -> None:
         """
         Stochastic gradient descent optimizing algorithm with momentum and decay.
 
@@ -30,8 +29,10 @@ class Optimizer_SGD(Optimizer):
         self.momentum = momentum
         self.decay = decay
         self.iterations = 0
+        self.model_params = parameters
+        self.state = self._init_state(parameters)
 
-    def _update_sgd_parameters(self, params: Tensor, momentum: Tensor = None) -> tuple[Tensor, Tensor | None]:
+    def _update_sgd_parameters(self, params: Parameter, momentum: np.ndarray = None) -> tuple[np.ndarray, np.ndarray | None]:
         """
         Helper method for calculating new parameters of a layer. Uses momentum if provided.
 
@@ -55,14 +56,14 @@ class Optimizer_SGD(Optimizer):
 
         if momentum is not None:
             # Calculate new parameters using momentum
-            new_momentum = self.momentum * momentum.data - self.current_learning_rate * gradient
+            new_momentum = self.momentum * momentum - self.current_learning_rate * gradient
             return param_data + new_momentum, new_momentum
         else:
             # Calculate new parameters using vanilla SGD
             update = -self.current_learning_rate * gradient
             return param_data + update, None
         
-    def _update_layer_parameters(self, layer: Layer) -> None:
+    def _update_layer_parameters(self, param: Parameter) -> None:
         """
         Helper method for updating parameters of a layer.
 
@@ -75,25 +76,17 @@ class Optimizer_SGD(Optimizer):
         -------
         None
         """
-        params = layer.get_parameters()
+        momentum = self.state.get(id(param), {}).get("momentum", None)
 
-        # Loop through parameters of a layer
-        for param_name, param_value in params.items():
+        # Calculate new parameters and new momentum
+        new_params, new_momentum = self._update_sgd_parameters(params=param, momentum=momentum)
 
-            momentum = getattr(layer, param_name + "_momentum", None)
+        param.data = new_params
 
-            # Calculate new parameters and new momentum
-            new_params, new_momentum = self._update_sgd_parameters(params=param_value, momentum=momentum)
-
-            # Set new parameters attribute to layer
-            #setattr(layer, param_name, new_params)
-            param_value.data = new_params
-            if new_momentum is not None:
-                # Set new momentum attribute to layer
-                new_momentum = Tensor(new_momentum, use_grad=False)
-                setattr(layer, param_name + "_momentum", new_momentum)
+        if new_momentum is not None:
+            self.state[id(param)]["momentum"] = new_momentum
         
-    def _init_layer_parameters(self, layer: Layer) -> None:
+    def _init_state(self, parameters: list[Parameter]) -> dict[int, dict[str, np.ndarray]]:
         """
         Helper method for initializing momentum of a layer.
 
@@ -106,14 +99,15 @@ class Optimizer_SGD(Optimizer):
         -------
         None
         """
-        params = layer.get_parameters()
-        for p in params:
-            momentum = Tensor(
-                np.zeros_like(params[p].data),
-                use_grad=False
-            )
-            # Create empty momentum array for every parameter 
-            setattr(layer, f"{p}_momentum", momentum)
+        state = {}
+        if self.momentum:
+            for p in parameters:
+                state[id(p)] = { "momentum": np.zeros_like(p.data) }
+        return state
+
+    def set_parameters(self, parameters: list[Parameter]):
+        self.model_params = parameters
+        self.state = self._init_state(parameters)
     
     def pre_update_parameters(self) -> None:
         """
@@ -127,7 +121,7 @@ class Optimizer_SGD(Optimizer):
             # Inverse decay method
             self.current_learning_rate = self.learning_rate  / (1 + self.iterations * self.decay)
 
-    def update_parameters(self, layer: Layer) -> None:
+    def update_parameters(self) -> None:
         """
         Method for updating layer parameters recursively.
 
@@ -141,29 +135,8 @@ class Optimizer_SGD(Optimizer):
         None
         """
 
-        # Base case: if layer object is a Layer instance it can be updated
-        if isinstance(layer, Layer):
-            params = layer.get_parameters()
-            if params is None:
-                return
-            param_name = list(params.keys())[0] 
-
-            # Check if momentum are initialized and should they be initialized
-            if not hasattr(layer, param_name + "_momentum") and self.momentum:
-                self._init_layer_parameters(layer)
-
-            # Update layer parameters
-            self._update_layer_parameters(layer)
-
-        # Case 2: if layer object is a list perform recursive update for every element of the list
-        elif isinstance(layer, list):
-            for l in layer:
-                self.update_parameters(l)
-
-        # Case 3: if layer object has its own class attributes perform recursive update for every class attribute
-        elif isinstance(layer, Module):
-            for _, attr in vars(layer).items():
-                self.update_parameters(attr)
+        for param in self.model_params:
+            self._update_layer_parameters(param)
 
     def post_update_parameters(self) -> None:
         """
@@ -175,18 +148,7 @@ class Optimizer_SGD(Optimizer):
         """
         self.iterations += 1
 
-    def zero_grad(self, layer):
-
-
-        if isinstance(layer, Layer):
-            for _, attr in vars(layer).items():
-                if isinstance(attr, Tensor) and attr.use_grad:
-                    attr.zero_grad()
-
-        elif isinstance(layer, list):
-            for l in layer:
-                self.zero_grad(l)
-
-        elif isinstance(layer, Module):
-            for _, attr in vars(layer).items():
-                self.zero_grad(attr)
+    def zero_grad(self):
+        for param in self.model_params:
+            if param.use_grad:
+                param.zero_grad()

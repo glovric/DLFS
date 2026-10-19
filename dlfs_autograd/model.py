@@ -1,11 +1,12 @@
 import numpy as np
-from .base import Layer, Module, Activation, Loss, Optimizer
+from .base import Module, Activation, Loss, Optimizer
 from .modules import SequentialWrapper
 from .helpers import get_random_batch
+from .tensor import Tensor
 
 class SequentialModel(Module):
 
-    def __init__(self, layers: list[Layer | Module | Activation] = None, loss_function: Loss = None, optimizer: Optimizer = None) -> None:
+    def __init__(self, layers: list[Module | Activation] = None, loss_function: Loss = None, optimizer: Optimizer = None) -> None:
         """
         Neural network model.
 
@@ -23,14 +24,15 @@ class SequentialModel(Module):
         self.wrapper = SequentialWrapper(layers)
         self.loss_function = loss_function
         self.optimizer = optimizer
+        self.optimizer.set_parameters(self.parameters())
 
-    def forward(self, X: np.ndarray, training: bool = False) -> None:
+    def forward(self, X: Tensor, training: bool = False) -> None:
         """
         Forward pass.
 
         Parameters
         ----------
-        X : np.ndarray
+        X : Tensor
             Input values.
 
         Returns
@@ -39,12 +41,12 @@ class SequentialModel(Module):
         """
 
         # Pass data through SequentialWrapper
-        self.wrapper.forward(X)
+        self.wrapper.forward(X, training)
 
         # Output of the model is the output of SequentialWrapper
         self.output = self.wrapper.output
 
-    def train(self, X: np.ndarray, y: np.ndarray, epochs: int = 1000, batch_size: int = None, print_every: int = None) -> None:
+    def train(self, X: Tensor, y: Tensor, epochs: int = 1000, batch_size: int = None, print_every: int = None) -> None:
         """
         Train the model.
 
@@ -72,6 +74,8 @@ class SequentialModel(Module):
 
         for i in range(epochs + 1):
 
+            self.optimizer.zero_grad()
+
             if batch_size is not None:
                 batch_X, batch_y = get_random_batch(X, y, batch_size=batch_size)
             else:
@@ -88,16 +92,14 @@ class SequentialModel(Module):
 
             # Update parameters
             self.optimizer.pre_update_parameters()
-            self.optimizer.update_parameters(self.wrapper)
+            self.optimizer.update_parameters()
             self.optimizer.post_update_parameters()
-
-            self.optimizer.zero_grad(self.wrapper)
 
             if print_every is not None:
                 if not i % print_every:
                     print(f'===== EPOCH : {i} ===== LOSS : {loss.data} =====')
 
-    def predict(self, X: np.ndarray) -> np.ndarray:
+    def predict(self, X: Tensor) -> np.ndarray:
         """
         Predict using the model.
 

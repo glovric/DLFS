@@ -1,7 +1,8 @@
 import numpy as np
+from .base import Loss
 from .tensor import Tensor
 
-class BCE_Loss:
+class BCE_Loss(Loss):
 
     def calculate(self, y_pred, y_true):
         y_pred = y_pred if isinstance(y_pred, Tensor) else Tensor(y_pred)
@@ -25,16 +26,9 @@ class BCE_Loss:
 
         # Store tensor result
         result._backward = _backward
-        self.output = result
-
-        # For display purposes
-        #self.value = result.data
         return result
 
-    def backward(self):
-        self.output.backward()
-
-class MSE_Loss:
+class MSE_Loss(Loss):
 
     def calculate(self, y_pred, y_true):
         y_pred = y_pred if isinstance(y_pred, Tensor) else Tensor(y_pred)
@@ -59,8 +53,4 @@ class MSE_Loss:
         result._backward = _backward
         self.output = result
 
-        # For display purposes
-        self.value = result.data
-
-    def backward(self):
-        self.output.backward()
+        return result

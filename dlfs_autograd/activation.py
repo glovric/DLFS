@@ -15,8 +15,7 @@ class ReLU(Activation):
         )
 
         def _backward():
-            relu_grad = data.copy()
-            relu_grad[data < 0] = 0
+            relu_grad = np.where(data < 0, 0, 1)
             inputs.grad += relu_grad * result.grad
 
         result._backward = _backward

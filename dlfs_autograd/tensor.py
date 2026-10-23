@@ -1,4 +1,5 @@
 import numpy as np
+import gc
 
 class Tensor:
 
@@ -136,6 +137,12 @@ class Tensor:
 
         for v in reversed(topo):
             v._backward()
+
+        for v in topo:
+            v._prev.clear()
+            v._backward = lambda: None
+
+        gc.collect() # This helps tremendously because Python and memory
 
     def zero_grad(self):
         self.grad = None

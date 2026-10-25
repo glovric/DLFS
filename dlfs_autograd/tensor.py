@@ -95,7 +95,8 @@ class Tensor:
             _op="@"
         )
 
-        def _backward():
+        def _backward():   
+            """                 
             *dims, n_features = result.grad.shape
             grad_reshaped = result.grad.reshape(-1, n_features)
 
@@ -107,13 +108,36 @@ class Tensor:
 
             if other.use_grad:
                 if other.grad is None:
-                    other.init_grad()              
+                    other.init_grad()         
                 other.grad += np.matmul(data_reshaped.T, grad_reshaped)
             if self.use_grad:
                 if self.grad is None:
                     self.init_grad()
                 self.grad += np.matmul(grad_reshaped, other_reshaped.T)
+            """
 
+                     
+            if other.use_grad:
+                if other.grad is None:
+                    other.init_grad()         
+                grad_other = np.matmul(
+                    np.swapaxes(self.data, -1, -2),
+                    result.grad,
+                )
+                grad_other = unbroadcast(grad_other, other.data.shape)
+                other.grad += grad_other
+
+            if self.use_grad:
+                if self.grad is None:
+                    self.init_grad()
+                grad_self = np.matmul(
+                    result.grad,
+                    np.swapaxes(other.data, -1, -2),
+                )
+                grad_self = unbroadcast(grad_self, self.data.shape)
+                self.grad += grad_self
+            
+            
         result._backward = _backward
         return result
 
@@ -142,7 +166,8 @@ class Tensor:
             v._prev.clear()
             v._backward = lambda: None
 
-        gc.collect() # This helps tremendously because Python and memory
+        # Slows down training, but keeps memory usage stable
+        #gc.collect() # This helps tremendously because Python and memory
 
     def zero_grad(self):
         self.grad = None
@@ -205,3 +230,15 @@ def sum_to_shape(grad, shape):
             grad = grad.sum(axis=axis, keepdims=True)
 
     return grad
+
+def unbroadcast(grad, original_shape):
+    # Remove extra leading dimensions
+    while grad.ndim > len(original_shape):
+        grad = grad.sum(axis=0)
+
+    # Sum dimensions that were broadcast from size 1
+    for axis, size in enumerate(original_shape):
+        if size == 1 and grad.shape[axis] != 1:
+            grad = grad.sum(axis=axis, keepdims=True)
+
+    return grad.reshape(original_shape)

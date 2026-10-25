@@ -2,6 +2,7 @@ import numpy as np
 from .base import Module
 from .tensor import Tensor, Parameter
 from .helpers import im2col_strided, col2im_strided
+from .functions import im2col_strided_tensor
 
 class DenseLayer(Module):
 
@@ -45,27 +46,19 @@ class ConvLayer(Module):
 
         B, _, self.H_in, self.W_in = inputs.data.shape
 
-        C_out, C_in, kH, kW = self.output_channels, self.input_channels, self.kernel_size, self.kernel_size
+        C_out, kH, kW = self.output_channels, self.kernel_size, self.kernel_size
 
-        inputs_col, H_out, W_out = im2col_strided( # (B, C_in*kH*kW, H_out*W_out)
-            inputs.data, 
+        inputs_col, H_out, W_out = im2col_strided_tensor( # (B, C_in*kH*kW, H_out*W_out)
+            inputs, 
             (kH, kW), 
             stride=self.stride,
             padding=self.padding
         )
 
-        K_col = self.kernels.data # (C_out, C_in*kH*kW)
-
-        result_col = K_col @ inputs_col #+ self.biases.data[None, :, None] # (B, C_out, H_out*W_out)
-        result_col += self.biases.data[None, :, None] #.reshape(1, -1, 1)
-
+        result_col = self.kernels @ inputs_col + self.biases.reshape(1, -1, 1)
         result = result_col.reshape(B, C_out, H_out, W_out) # (B, C_out, H_out, W_out)
-        result = Tensor(
-            result,
-            _children=(inputs, self.kernels, self.biases),
-            _op="conv"
-        )
 
+        """   
         def _backward():
 
             if inputs.grad is None:
@@ -99,9 +92,7 @@ class ConvLayer(Module):
 
             dbiases = np.sum(delta_col, axis=(0, 2)) # (C_out)
             self.biases.grad += dbiases
-
-        result._backward = _backward
-
+        """
         self.output = result
 
 class MaxPoolLayer(Module):

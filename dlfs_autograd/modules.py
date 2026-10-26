@@ -1,6 +1,6 @@
 import numpy as np
 from .base import Module, Activation
-from .tensor import Tensor
+from .tensor.base import Tensor
 
 class SequentialWrapper(Module):
 

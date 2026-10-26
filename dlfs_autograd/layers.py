@@ -1,8 +1,8 @@
 import numpy as np
 from .base import Module
-from .tensor import Tensor, Parameter
 from .helpers import im2col_strided, col2im_strided
-from .functions import im2col_strided_tensor
+from .tensor.base import Tensor, Parameter
+from .tensor.misc import im2col_strided_tensor
 
 class DenseLayer(Module):
 
@@ -136,9 +136,6 @@ class MaxPoolLayer(Module):
 
         def _backward():
 
-            if inputs.grad is None:
-                inputs.init_grad()
-
             B, C, _, out_HW = cols_reshaped.shape
             kH, kW = self.pool_size
 
@@ -161,7 +158,7 @@ class MaxPoolLayer(Module):
             dX = col2im_strided(dcols, output_shape=(self.H_in, self.W_in), kernel_shape=self.pool_size,
                                 stride=self.stride, padding=self.padding)
 
-            inputs.grad += dX
+            inputs.grad = dX if inputs.grad is None else inputs.grad + dX
 
         result._backward = _backward
 

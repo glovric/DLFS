@@ -1,5 +1,5 @@
 import numpy as np
-from .tensor import Tensor, Parameter
+from .tensor.base import Tensor, Parameter
 
 class Module:
     """
@@ -41,7 +41,6 @@ class Loss:
     def calculate(self, y_pred: Tensor, y_true: Tensor) -> Tensor:
         pass
     
-
 class Optimizer:
     """
     Optimizer abstract base class.

@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from .tensor import Tensor
+from .tensor.base import Tensor
 
 def plot_2d_clf_problem(X, y, h=None):
     '''

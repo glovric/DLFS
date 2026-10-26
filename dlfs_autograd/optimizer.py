@@ -1,6 +1,6 @@
 import numpy as np
 from .base import Optimizer
-from .tensor import Parameter
+from .tensor.base import Parameter
 
 class Optimizer_SGD(Optimizer):
 

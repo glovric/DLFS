@@ -2,7 +2,7 @@ import numpy as np
 from .base import Module, Activation, Loss, Optimizer
 from .modules import SequentialWrapper
 from .helpers import get_random_batch
-from .tensor import Tensor
+from .tensor.base import Tensor, ensure_tensor
 
 class SequentialModel(Module):
 
@@ -71,6 +71,7 @@ class SequentialModel(Module):
         -------
         None
         """
+        X, y = ensure_tensor(X), ensure_tensor(y)
 
         for i in range(epochs + 1):
 

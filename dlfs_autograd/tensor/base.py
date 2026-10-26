@@ -1,5 +1,6 @@
 import numpy as np
 import gc
+from .helpers import sum_to_shape, unbroadcast
 
 class Tensor:
 
@@ -17,7 +18,7 @@ class Tensor:
 
     def __add__(self, other):
 
-        other = other if isinstance(other, Tensor) else Tensor(other)
+        other = ensure_tensor(other)
 
         result = Tensor(
             self.data + other.data,
@@ -27,17 +28,11 @@ class Tensor:
 
         def _backward():
             if self.use_grad:
-                if self.grad is None:
-                    self.init_grad()
-                self.grad += sum_to_shape(
-                    result.grad, self.data.shape
-                )
+                up_grad = sum_to_shape(result.grad, self.data.shape)
+                self.grad = up_grad if self.grad is None else self.grad + up_grad
             if other.use_grad:
-                if other.grad is None:
-                    other.init_grad()
-                other.grad += sum_to_shape(
-                    result.grad, other.data.shape
-                )
+                up_grad = sum_to_shape(result.grad, other.data.shape)
+                other.grad = up_grad if other.grad is None else other.grad + up_grad
 
         result._backward = _backward
         return result
@@ -63,7 +58,7 @@ class Tensor:
         return result    
 
     def __mul__(self, other):
-        other = other if isinstance(other, Tensor) else Tensor(other)
+        other = ensure_tensor(other)
 
         result = Tensor(
             self.data * other.data,
@@ -87,7 +82,7 @@ class Tensor:
     __rmul__ = __mul__
 
     def __matmul__(self, other):
-        other = other if isinstance(other, Tensor) else Tensor(other)
+        other = ensure_tensor(other)
 
         result = Tensor(
             self.data @ other.data,
@@ -117,25 +112,15 @@ class Tensor:
             """
 
                      
-            if other.use_grad:
-                if other.grad is None:
-                    other.init_grad()         
-                grad_other = np.matmul(
-                    np.swapaxes(self.data, -1, -2),
-                    result.grad,
-                )
+            if other.use_grad:      
+                grad_other = np.matmul(np.swapaxes(self.data, -1, -2), result.grad)
                 grad_other = unbroadcast(grad_other, other.data.shape)
-                other.grad += grad_other
+                other.grad = grad_other if other.grad is None else other.grad + grad_other
 
             if self.use_grad:
-                if self.grad is None:
-                    self.init_grad()
-                grad_self = np.matmul(
-                    result.grad,
-                    np.swapaxes(other.data, -1, -2),
-                )
+                grad_self = np.matmul(result.grad, np.swapaxes(other.data, -1, -2))
                 grad_self = unbroadcast(grad_self, self.data.shape)
-                self.grad += grad_self
+                self.grad = grad_self if self.grad is None else self.grad + grad_self
             
             
         result._backward = _backward
@@ -172,10 +157,6 @@ class Tensor:
     def zero_grad(self):
         self.grad = None
 
-    def init_grad(self):
-        if self.use_grad:
-            self.grad = np.zeros_like(self.data, dtype=np.float32)
-
     def sum(self):
         result = Tensor(
             self.data.sum(),
@@ -205,9 +186,8 @@ class Tensor:
 
         def _backward():
             if self.use_grad:
-                if self.grad is None:
-                    self.init_grad()
-                self.grad += result.grad.reshape(old_shape)
+                up_grad = result.grad.reshape(old_shape)
+                self.grad = up_grad if self.grad is None else self.grad + up_grad
 
         result._backward = _backward
         return result
@@ -217,28 +197,7 @@ class Parameter(Tensor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-def sum_to_shape(grad, shape):
-    """Sum gradient axes introduced by NumPy broadcasting."""
-
-    # Remove leading dimensions added during broadcasting
-    while grad.ndim > len(shape):
-        grad = grad.sum(axis=0)
-
-    # Sum dimensions where the original shape was 1
-    for axis, size in enumerate(shape):
-        if size == 1 and grad.shape[axis] != 1:
-            grad = grad.sum(axis=axis, keepdims=True)
-
-    return grad
-
-def unbroadcast(grad, original_shape):
-    # Remove extra leading dimensions
-    while grad.ndim > len(original_shape):
-        grad = grad.sum(axis=0)
-
-    # Sum dimensions that were broadcast from size 1
-    for axis, size in enumerate(original_shape):
-        if size == 1 and grad.shape[axis] != 1:
-            grad = grad.sum(axis=axis, keepdims=True)
-
-    return grad.reshape(original_shape)
+def ensure_tensor(obj):
+    if isinstance(obj, Tensor):
+        return obj
+    return Tensor(obj)

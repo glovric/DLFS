@@ -149,8 +149,7 @@ class Optimizer_SGD(Optimizer):
 
     def zero_grad(self):
         for param in self.model_params:
-            if param.use_grad:
-                param.zero_grad()
+            param.zero_grad()
 
 class Optimizer_Adam(Optimizer):
 
@@ -291,8 +290,7 @@ class Optimizer_Adam(Optimizer):
 
     def zero_grad(self):
         for param in self.model_params:
-            if param.use_grad:
-                param.zero_grad()
+            param.zero_grad()
 
     def _init_state(self, parameters: list[Parameter]) -> dict[int, dict[str, np.ndarray]]:
         """

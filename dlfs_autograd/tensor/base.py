@@ -46,13 +46,8 @@ class Tensor:
 
         def _backward():
             if self.use_grad:
-                if self.grad is None:
-                    self.init_grad()
-                self.grad += (
-                    exponent
-                    * self.data ** (exponent - 1)
-                    * result.grad
-                )
+                up_grad = exponent * self.data ** (exponent - 1) * result.grad
+                self.grad = up_grad if self.grad is None else self.grad + up_grad
 
         result._backward = _backward
         return result    
@@ -68,13 +63,11 @@ class Tensor:
 
         def _backward():
             if self.use_grad:
-                if self.grad is None:
-                    self.init_grad()
-                self.grad += result.grad * other.data
+                up_grad = result.grad * other.data
+                self.grad = up_grad if self.grad is None else self.grad + up_grad
             if other.use_grad:
-                if other.grad is None:
-                    other.init_grad()
-                other.grad += result.grad * self.data
+                up_grad = result.grad * self.data
+                other.grad = up_grad if other.grad is None else other.grad + up_grad
 
         result._backward = _backward
         return result
@@ -113,14 +106,14 @@ class Tensor:
 
                      
             if other.use_grad:      
-                grad_other = np.matmul(np.swapaxes(self.data, -1, -2), result.grad)
-                grad_other = unbroadcast(grad_other, other.data.shape)
-                other.grad = grad_other if other.grad is None else other.grad + grad_other
+                up_grad = np.matmul(np.swapaxes(self.data, -1, -2), result.grad)
+                up_grad = unbroadcast(up_grad, other.data.shape)
+                other.grad = up_grad if other.grad is None else other.grad + up_grad
 
             if self.use_grad:
-                grad_self = np.matmul(result.grad, np.swapaxes(other.data, -1, -2))
-                grad_self = unbroadcast(grad_self, self.data.shape)
-                self.grad = grad_self if self.grad is None else self.grad + grad_self
+                up_grad = np.matmul(result.grad, np.swapaxes(other.data, -1, -2))
+                up_grad = unbroadcast(up_grad, self.data.shape)
+                self.grad = up_grad if self.grad is None else self.grad + up_grad
             
             
         result._backward = _backward
@@ -132,8 +125,8 @@ class Tensor:
         visited = set()
 
         def build(v):
-            if v not in visited:
-                visited.add(v)
+            if id(v) not in visited:
+                visited.add(id(v))
 
                 for child in v._prev:
                     build(child)

@@ -133,3 +133,65 @@ def im2col_strided_tensor(
     result._backward = _backward
 
     return result, out_H, out_W
+
+def maxpool(x: Tensor, pool_size: int | tuple, stride: int = 1, padding: int = 0):
+
+    if isinstance(pool_size, tuple):
+        pool_size = pool_size
+    else:
+        pool_size = (pool_size, pool_size)
+
+    x = ensure_tensor(x)
+
+    B, C, H_in, W_in = x.data.shape
+    kH, kW = pool_size
+
+    cols, out_H, out_W = im2col_strided(
+        x.data, 
+        kernel_shape=pool_size,
+        stride=stride, 
+        padding=padding
+    )
+
+    cols_reshaped = cols.reshape(B, C, kH*kW, out_H*out_W)
+
+    max_vals = np.max(cols_reshaped, axis=2)
+    max_idx = np.argmax(cols_reshaped, axis=2)   # <--- NEEDED FOR BACKWARD
+
+    pooled = max_vals.reshape(B, C, out_H, out_W)
+
+    result = Tensor(
+        pooled,
+        _children=(x, ),
+        _op="maxpool"
+    )
+
+    def _backward():
+
+        if x.use_grad:
+
+            out_HW = out_H * out_W
+
+            delta_flat = result.grad.reshape(B, C, out_HW)
+            
+            dcols = np.zeros_like(cols_reshaped)
+
+            # Scatter dout to positions of max values
+            # max_idx has shape (B,C,out_HW); use advanced indexing
+            b_idx = np.arange(B)[:, None, None]
+            c_idx = np.arange(C)[None, :, None]
+            hw_idx = np.arange(out_HW)[None, None, :]
+
+            dcols[b_idx, c_idx, max_idx, hw_idx] = delta_flat
+
+            # reshape back to original im2col shape
+            dcols = dcols.reshape(B, C*kH*kW, out_HW)
+
+            # convert col-gradients back to image
+            dX = col2im_strided(dcols, output_shape=(H_in, W_in), kernel_shape=pool_size,
+                                stride=stride, padding=padding)
+
+            x.grad = dX if x.grad is None else x.grad + dX
+
+    result._backward = _backward
+    return result

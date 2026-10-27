@@ -271,6 +271,8 @@ class Optimizer_Adam(Optimizer):
         -------
         None
         """
+        if self.clip_grad:
+            self._clip_gradients()
         for param in self.model_params:
             self._update_layer_parameters(param)
 
@@ -291,6 +293,22 @@ class Optimizer_Adam(Optimizer):
     def zero_grad(self):
         for param in self.model_params:
             param.zero_grad()
+
+    def _clip_gradients(self, clip_factor: float = 0.2, eps: float = 1e-3) -> None:
+
+        for param in self.model_params:
+            value = param.data
+            grad = param.grad
+            if grad is not None:
+                value_norm = np.linalg.norm(value)
+                grad_norm = np.linalg.norm(grad)
+
+                max_grad_norm = clip_factor * max(value_norm, eps)
+
+                if grad_norm > max_grad_norm:
+                    scale = max_grad_norm / (grad_norm + eps)
+                    clipped_grad = grad * scale
+                    grad = clipped_grad
 
     def _init_state(self, parameters: list[Parameter]) -> dict[int, dict[str, np.ndarray]]:
         """

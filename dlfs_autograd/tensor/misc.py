@@ -195,3 +195,23 @@ def maxpool(x: Tensor, pool_size: int | tuple, stride: int = 1, padding: int = 0
 
     result._backward = _backward
     return result
+
+def stack_tensors(tensors: list[Tensor], axis=1):
+    data = np.stack([t.data for t in tensors], axis=axis)
+
+    result = Tensor(
+        data,
+        _children=tuple(tensors),
+        _op="stack",
+    )
+
+    def _backward():
+        result.grad = np.zeros_like(data, dtype=np.float32) if result.grad is None else result.grad
+        grads = np.split(result.grad, len(tensors), axis=axis)
+
+        for tensor, grad in zip(tensors, grads):
+            up_grad = np.squeeze(grad, axis=axis)
+            tensor.grad = up_grad if tensor.grad is None else tensor.grad + up_grad
+
+    result._backward = _backward
+    return result

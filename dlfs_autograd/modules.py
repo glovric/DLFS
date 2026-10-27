@@ -1,6 +1,7 @@
 import numpy as np
 from .base import Module, Activation
 from .tensor.base import Tensor
+from .layers import RecurrentLayer
 
 class SequentialWrapper(Module):
 
@@ -37,3 +38,32 @@ class SequentialWrapper(Module):
             layer.forward(self.layers[idx - 1].output, training)
 
         self.output = self.layers[-1].output
+
+class RNN(Module):
+
+    def __init__(self, n_inputs: int, n_hidden: int, n_layers: int = 1, predict_sequence: bool = False) -> None:
+
+        if n_layers == 1:
+            self.recurrent_layers = [RecurrentLayer(n_inputs, n_hidden, predict_sequence)]
+        else:
+            self.recurrent_layers = [RecurrentLayer(n_inputs, n_hidden)]
+            if predict_sequence:
+                for i in range(n_layers - 1):
+                    if i == n_layers - 2:
+                        self.recurrent_layers.append(RecurrentLayer(n_hidden, n_hidden, predict_sequence=True))
+                    else:
+                        self.recurrent_layers.append(RecurrentLayer(n_hidden, n_hidden))
+            else:
+                for i in range(n_layers - 1):
+                    self.recurrent_layers.append(RecurrentLayer(n_hidden, n_hidden))
+
+    def forward(self, inputs: np.ndarray, training=False) -> None:
+        # Pass data to the first recurrent layer
+        self.recurrent_layers[0].forward(inputs)
+
+        # Forward hidden states of the previous recurrent layer to the current one
+        for idx, layer in enumerate(self.recurrent_layers[1:], start=1):
+            layer.forward(self.recurrent_layers[idx - 1].hidden_states, training)
+
+        # Output of the RNN is the final recurrent layer's output
+        self.output = self.recurrent_layers[-1].output

@@ -113,9 +113,22 @@ class Tensor:
             if self.use_grad:
                 up_grad = np.matmul(result.grad, np.swapaxes(other.data, -1, -2))
                 up_grad = unbroadcast(up_grad, self.data.shape)
-                self.grad = up_grad if self.grad is None else self.grad + up_grad
+                self.grad = up_grad if self.grad is None else self.grad + up_grad            
             
-            
+        result._backward = _backward
+        return result
+
+    def __getitem__(self, idx):
+        result = Tensor(
+            self.data[idx],
+            _children=(self,),
+            _op="getitem",
+        )
+
+        def _backward():
+            if self.grad:
+                np.add.at(self.grad, idx, result.grad)
+
         result._backward = _backward
         return result
 
@@ -159,9 +172,8 @@ class Tensor:
 
         def _backward():
             if self.use_grad:
-                if self.grad is None:
-                    self.init_grad()
-                self.grad += np.ones_like(self.data, dtype=np.float32) * result.grad
+                up_grad = np.ones_like(self.data, dtype=np.float32) * result.grad
+                self.grad = up_grad if self.grad is None else self.grad + up_grad
 
         result._backward = _backward
         return result

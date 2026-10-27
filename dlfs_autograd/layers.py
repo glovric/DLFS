@@ -1,7 +1,8 @@
 import numpy as np
 from .base import Module
 from .tensor.base import Tensor, Parameter, ensure_tensor
-from .tensor.misc import im2col_strided_tensor, maxpool
+from .tensor.misc import im2col_strided_tensor, maxpool, stack_tensors
+from .tensor.math import tanh
 
 class DenseLayer(Module):
 
@@ -83,3 +84,49 @@ class ReshapeLayer:
         batch_size = inputs.data.shape[0]
         result = inputs.reshape(batch_size, *self.output_shape)
         self.output = result
+
+class RecurrentLayer(Module):
+
+    def __init__(self, n_inputs: int, n_hidden: int, predict_sequence: bool = False) -> None:
+        self.predict_sequence = predict_sequence
+
+        # Initialize parameters
+        k = 1 / np.sqrt(n_hidden)
+        self.n_hidden = n_hidden
+        self.input_weights = Parameter(
+            np.random.uniform(-k, k, (n_inputs, n_hidden))
+        )
+        self.hidden_weights = Parameter(
+            np.random.uniform(-k, k, (n_hidden, n_hidden))
+        )
+        self.input_bias = Parameter(
+            np.random.uniform(-k, k, (n_hidden))
+        )
+      
+    def forward(self, inputs: np.ndarray, training=False) -> None:
+
+        inputs = ensure_tensor(inputs)
+
+        n_samples, timestamps = inputs.data.shape[:2]
+
+        hidden_states_list = [Tensor(np.zeros((n_samples, self.n_hidden)))]
+
+        for t in range(timestamps):
+
+            prev_hidden = hidden_states_list[max(0, t-1)]
+
+            products = inputs[:, t, :] @ self.input_weights \
+                       + prev_hidden @ self.hidden_weights \
+                       + self.input_bias
+
+            hidden_states_list.append(tanh(products))
+
+        hidden_states_stacked = stack_tensors(hidden_states_list, axis=1)
+
+        if self.predict_sequence:
+            self.output = hidden_states_stacked
+        else:
+            self.output = hidden_states_list[-1]
+
+        self._hidden_states_list = hidden_states_list  # Keep the list!
+        self.hidden_states = hidden_states_stacked  # Stacked version for external use

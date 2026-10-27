@@ -121,7 +121,7 @@ class RecurrentLayer(Module):
 
             hidden_states_list.append(tanh(products))
 
-        hidden_states_stacked = stack_tensors(hidden_states_list, axis=1)
+        hidden_states_stacked = stack_tensors(hidden_states_list[1:], axis=1)
 
         if self.predict_sequence:
             self.output = hidden_states_stacked

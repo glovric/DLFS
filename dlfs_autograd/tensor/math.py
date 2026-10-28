@@ -1,4 +1,5 @@
 import numpy as np
+#from scipy.special import expit
 from .base import Tensor, ensure_tensor
 
 def exp(x: Tensor):

@@ -1,7 +1,7 @@
 import numpy as np
 from .base import Module
 from .tensor.base import Tensor, Parameter, ensure_tensor
-from .tensor.misc import im2col_strided_tensor, maxpool, stack_tensors, concatenate_tensors
+from .tensor.misc import im2col_strided_tensor, col2im_strided_tensor, maxpool, stack_tensors, concatenate_tensors
 from .tensor.math import tanh, sigmoid
 
 class DenseLayer(Module):
@@ -57,6 +57,52 @@ class ConvLayer(Module):
         result_col = self.kernels @ inputs_col + self.biases.reshape(1, -1, 1)
         result = result_col.reshape(B, C_out, H_out, W_out) # (B, C_out, H_out, W_out)
         self.output = result
+
+class ConvTransposeLayer(Module):
+
+    def __init__(self, input_channels: tuple, output_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, output_padding=0) -> None:
+
+        self.input_channels = input_channels
+        self.output_channels = output_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.output_padding = output_padding
+
+        fan_in = input_channels * kernel_size**2
+        std = np.sqrt(1.0 / fan_in)
+
+        # Kernels is usually (input_channels, output_channels, kernel_size, kernel_size)
+        # To save some computation graph without reshaping lets store it as (output_channels*kernel_size*kernel_size, input_channels)
+        self.kernels = Parameter(
+            np.random.uniform(-std, std, size=(output_channels*kernel_size*kernel_size, input_channels))
+        )
+        self.biases = Parameter(
+            np.zeros(output_channels)
+        )
+
+    def forward(self, inputs: np.ndarray, training=False) -> None:
+
+        inputs = ensure_tensor(inputs)
+
+        C_in, kH, kW = self.input_channels, self.kernel_size, self.kernel_size
+        B, _, self.H_in, self.W_in = inputs.shape
+
+        Y_col = inputs.reshape(B, C_in, -1) # (B, C_in, H_in*W_in)
+        X_col = self.kernels @ Y_col # (C_out*kH*kW, C_in) x (B, C_in, H_in*W_in) = (B, C_out*kH*kW, H_in*W_in)
+
+        H_out = (self.H_in - 1) * self.stride - 2 * self.padding + kH + self.output_padding
+        W_out = (self.W_in - 1) * self.stride - 2 * self.padding + kW + self.output_padding
+
+        X = col2im_strided_tensor(
+            X_col, 
+            output_shape=(H_out, W_out), 
+            kernel_shape=(kH, kW), 
+            stride=self.stride, 
+            padding=self.padding
+        ) # (B, C_out, H_out, W_out)
+    
+        self.output = X + self.biases.reshape(1, -1, 1, 1)
 
 class MaxPoolLayer(Module):
 

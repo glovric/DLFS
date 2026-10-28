@@ -105,7 +105,7 @@ class Tensor:
             """
 
                      
-            if other.use_grad:      
+            if other.use_grad:    
                 up_grad = np.matmul(np.swapaxes(self.data, -1, -2), result.grad)
                 up_grad = unbroadcast(up_grad, other.data.shape)
                 other.grad = up_grad if other.grad is None else other.grad + up_grad

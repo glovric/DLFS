@@ -134,6 +134,39 @@ def im2col_strided_tensor(
 
     return result, out_H, out_W
 
+def col2im_strided_tensor(cols: Tensor, output_shape, kernel_shape, stride=1, padding=0):
+
+    cols = ensure_tensor(cols)
+
+    img = col2im_strided(
+        cols.data,
+        output_shape,
+        kernel_shape,
+        stride=stride,
+        padding=padding
+    )
+
+    result = Tensor(
+        img,
+        _children=(cols, ),
+        _op="col2im"
+    )
+
+    def _backward():
+
+        cols_reverse, _, _ = im2col_strided(
+            result.data,
+            kernel_shape=kernel_shape,
+            stride=stride,
+            padding=padding
+        )
+
+        cols.grad = cols_reverse if cols.grad is None else cols.grad + cols_reverse
+
+    result._backward = _backward
+
+    return result
+
 def maxpool(x: Tensor, pool_size: int | tuple, stride: int = 1, padding: int = 0):
 
     if isinstance(pool_size, tuple):

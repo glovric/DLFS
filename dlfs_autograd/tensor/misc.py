@@ -215,3 +215,36 @@ def stack_tensors(tensors: list[Tensor], axis=1):
 
     result._backward = _backward
     return result
+
+def concatenate_tensors(tensors: list[Tensor], axis=1):
+    # Concatenate the data
+    data = np.concatenate([t.data for t in tensors], axis=axis)
+    
+    result = Tensor(
+        data,
+        _children=tuple(tensors),
+        _op="concatenate",
+    )
+    
+    def _backward():
+        result.grad = np.zeros_like(data, dtype=np.float32) if result.grad is None else result.grad
+        
+        # Split the gradient back to each input tensor
+        # We need to know the shape of each original tensor to split correctly
+        split_indices = []
+        current_pos = 0
+        
+        for tensor in tensors:
+            size_along_axis = tensor.data.shape[axis]
+            split_indices.append(current_pos + size_along_axis)
+            current_pos += size_along_axis
+        
+        # Split gradients along the concatenation axis
+        grads = np.split(result.grad, split_indices[:-1], axis=axis)
+        
+        # Assign gradients back to each input tensor
+        for tensor, grad in zip(tensors, grads):
+            tensor.grad = grad if tensor.grad is None else tensor.grad + grad
+    
+    result._backward = _backward
+    return result

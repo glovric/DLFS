@@ -41,7 +41,7 @@ class SequentialModel(Module):
         """
 
         # Pass data through SequentialWrapper
-        self.wrapper.forward(X, training)
+        self.wrapper.forward(X, training=training)
 
         # Output of the model is the output of SequentialWrapper
         self.output = self.wrapper.output

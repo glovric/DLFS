@@ -1,7 +1,7 @@
 import numpy as np
 from .base import Module, Activation
 from .tensor.base import Tensor
-from .layers import RecurrentLayer
+from .layers import RecurrentLayer, LSTMLayer
 
 class SequentialWrapper(Module):
 
@@ -32,10 +32,10 @@ class SequentialWrapper(Module):
         -------
         None
         """
-        self.layers[0].forward(x, training)
+        self.layers[0].forward(x, training=training)
 
         for idx, layer in enumerate(self.layers[1:], start=1):
-            layer.forward(self.layers[idx - 1].output, training)
+            layer.forward(self.layers[idx - 1].output, training=training)
 
         self.output = self.layers[-1].output
 
@@ -67,3 +67,33 @@ class RNN(Module):
 
         # Output of the RNN is the final recurrent layer's output
         self.output = self.recurrent_layers[-1].output
+
+class LSTM(Module):
+
+    def __init__(self, n_inputs: int, n_hidden: int, n_layers: int = 1, predict_sequence: bool = False) -> None:
+
+        if n_layers == 1:
+            self.lstm_layers = [LSTMLayer(n_inputs, n_hidden, predict_sequence)]
+        else:
+            self.lstm_layers = [LSTMLayer(n_inputs, n_hidden)]
+            if predict_sequence:
+                for i in range(n_layers - 1):
+                    if i == n_layers - 2:
+                        self.lstm_layers.append(LSTMLayer(n_hidden, n_hidden, predict_sequence=True))
+                    else:
+                        self.lstm_layers.append(LSTMLayer(n_hidden, n_hidden))
+            else:
+                for i in range(n_layers - 1):
+                    self.lstm_layers.append(LSTMLayer(n_hidden, n_hidden))
+
+    def forward(self, inputs: np.ndarray, training=False) -> None:
+        self.lstm_layers[0].forward(inputs)
+
+        for idx, layer in enumerate(self.lstm_layers[1:], start=1):
+            layer.forward(
+                self.lstm_layers[idx - 1].hidden_states, 
+                cell_state=self.lstm_layers[idx - 1].last_cell_state,
+                training=training
+            )
+
+        self.output = self.lstm_layers[-1].output

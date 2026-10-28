@@ -132,6 +132,14 @@ class Tensor:
         result._backward = _backward
         return result
 
+    @property
+    def shape(self):
+        return self.data.shape
+
+    @property
+    def ndim(self):
+        return self.data.ndim
+
     def backward(self):
         # Build topological ordering of graph
         topo = []

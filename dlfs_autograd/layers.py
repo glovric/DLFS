@@ -1,8 +1,8 @@
 import numpy as np
 from .base import Module
 from .tensor.base import Tensor, Parameter, ensure_tensor
-from .tensor.misc import im2col_strided_tensor, maxpool, stack_tensors
-from .tensor.math import tanh
+from .tensor.misc import im2col_strided_tensor, maxpool, stack_tensors, concatenate_tensors
+from .tensor.math import tanh, sigmoid
 
 class DenseLayer(Module):
 
@@ -130,3 +130,93 @@ class RecurrentLayer(Module):
 
         self._hidden_states_list = hidden_states_list  # Keep the list!
         self.hidden_states = hidden_states_stacked  # Stacked version for external use
+
+class LSTMLayer(Module):
+
+    def __init__(self, n_inputs: int, n_hidden: int, predict_sequence: bool = False) -> None:
+        self.predict_sequence = predict_sequence
+
+        k = 1 / np.sqrt(n_hidden)
+        self.n_hidden = n_hidden
+        self.n_inputs = n_inputs
+
+        self.input_weights = Parameter(
+            np.random.uniform(-k, k, (n_inputs + n_hidden, n_hidden))
+        )
+        self.input_bias = Parameter(
+            np.random.uniform(-k, k, (n_hidden))
+        )
+
+        self.forget_weights = Parameter(
+            np.random.uniform(-k, k, (n_inputs + n_hidden, n_hidden))
+        )
+        self.forget_bias = Parameter(
+            np.random.uniform(-k, k, (n_hidden))
+        )
+
+        self.candidate_weights = Parameter(
+            np.random.uniform(-k, k, (n_inputs + n_hidden, n_hidden))
+        )
+        self.candidate_bias = Parameter(
+            np.random.uniform(-k, k, (n_hidden))
+        ) 
+
+        self.output_weights = Parameter(
+            np.random.uniform(-k, k, (n_inputs + n_hidden, n_hidden))
+        )
+        self.output_bias = Parameter(
+            np.random.uniform(-k, k, (n_hidden))
+        ) 
+             
+    def forward(self, inputs: np.ndarray, cell_state: Tensor = None, training=False) -> None:
+
+        inputs = ensure_tensor(inputs)
+
+        assert inputs.ndim == 3, "LSTM input array must be of shape (B, T, N)"
+
+        n_samples, timestamps = inputs.shape[:2]
+
+        hidden_states_list = [Tensor(np.zeros((n_samples, self.n_hidden)))]
+        cell_states_list = [Tensor(np.zeros((n_samples, self.n_hidden)))] if cell_state is None else [cell_state]
+
+        for t in range(timestamps):
+
+            inputs_hidden_concatenated = concatenate_tensors(
+                                            [inputs[:, t, :], hidden_states_list[max(0, t-1)]], 
+                                            axis=1
+                                        )
+
+            # Calculate current forget state
+            f = inputs_hidden_concatenated @ self.forget_weights + self.forget_bias
+            f_t = sigmoid(f)
+
+            # Calculate current input state
+            i = inputs_hidden_concatenated @ self.input_weights + self.input_bias
+            i_t = sigmoid(i)
+
+            # Calculate current candidate state
+            cc = inputs_hidden_concatenated @ self.candidate_weights + self.candidate_bias
+            cc_t = tanh(cc)
+
+            # Calculate current output state
+            o = inputs_hidden_concatenated @ self.output_weights + self.output_bias
+            o_t = sigmoid(o)
+
+            # Calculate current cell state
+            c_t = cell_states_list[max(0, t-1)] * f_t + i_t * cc_t
+            cell_states_list.append(c_t)
+
+            # Calculate current hidden state
+            h_t = o_t * tanh(c_t)
+            hidden_states_list.append(h_t)
+
+        hidden_states_stacked = stack_tensors(hidden_states_list[1:], axis=1)
+       
+        if self.predict_sequence:
+            self.output = hidden_states_stacked
+        else:
+            self.output = hidden_states_list[-1]
+
+        self._hidden_states_list = hidden_states_list
+        self.hidden_states = hidden_states_stacked
+        self.last_cell_state = cell_states_list[-1]

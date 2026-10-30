@@ -140,8 +140,8 @@ def col2im_strided_tensor(cols: Tensor, output_shape, kernel_shape, stride=1, pa
 
     img = col2im_strided(
         cols.data,
-        output_shape,
-        kernel_shape,
+        output_shape=output_shape,
+        kernel_shape=kernel_shape,
         stride=stride,
         padding=padding
     )
@@ -155,7 +155,7 @@ def col2im_strided_tensor(cols: Tensor, output_shape, kernel_shape, stride=1, pa
     def _backward():
 
         cols_reverse, _, _ = im2col_strided(
-            result.data,
+            result.grad,
             kernel_shape=kernel_shape,
             stride=stride,
             padding=padding

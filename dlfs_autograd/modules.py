@@ -59,11 +59,11 @@ class RNN(Module):
 
     def forward(self, inputs: np.ndarray, training=False) -> None:
         # Pass data to the first recurrent layer
-        self.recurrent_layers[0].forward(inputs)
+        self.recurrent_layers[0].forward(inputs, training=training)
 
         # Forward hidden states of the previous recurrent layer to the current one
         for idx, layer in enumerate(self.recurrent_layers[1:], start=1):
-            layer.forward(self.recurrent_layers[idx - 1].hidden_states, training)
+            layer.forward(self.recurrent_layers[idx - 1].hidden_states, training=training)
 
         # Output of the RNN is the final recurrent layer's output
         self.output = self.recurrent_layers[-1].output

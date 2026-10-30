@@ -16,6 +16,7 @@ class DenseLayer(Module):
         )
 
     def forward(self, inputs, training=False):
+        inputs = ensure_tensor(inputs)
         self.output = inputs @ self.weights + self.biases
 
 class ConvLayer(Module):
@@ -31,7 +32,10 @@ class ConvLayer(Module):
         fan_in = input_channels * kernel_size**2
         std = np.sqrt(1.0 / fan_in)
 
-        # Initialize layer parameters
+        # Kernels is usually (output_channels, input_channels, kernel_size, kernel_size)
+        # To save some computation graph without reshaping lets store it as (output_channels, input_channels*kernel_size*kernel_size)
+        # This implementation differs from PyTorch kernel weights
+        # For comparison we need torch_conv_kernel.reshape(C_out, C_in*kernel_size*kernel_size)
         self.kernels = Parameter(
             np.random.uniform(-std, std, size=(output_channels, input_channels*kernel_size*kernel_size))
         )
@@ -74,6 +78,8 @@ class ConvTransposeLayer(Module):
 
         # Kernels is usually (input_channels, output_channels, kernel_size, kernel_size)
         # To save some computation graph without reshaping lets store it as (output_channels*kernel_size*kernel_size, input_channels)
+        # This implementation differs from PyTorch kernel weights
+        # For comparison we need torch_convt_kernel.transpose(1, 2, 3, 0).reshape(C_in*kernel_size*kernel_size, C_out)
         self.kernels = Parameter(
             np.random.uniform(-std, std, size=(output_channels*kernel_size*kernel_size, input_channels))
         )
@@ -159,7 +165,7 @@ class RecurrentLayer(Module):
 
         for t in range(timestamps):
 
-            prev_hidden = hidden_states_list[max(0, t-1)]
+            prev_hidden = hidden_states_list[-1]
 
             products = inputs[:, t, :] @ self.input_weights \
                        + prev_hidden @ self.hidden_weights \

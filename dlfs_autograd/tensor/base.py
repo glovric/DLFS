@@ -126,8 +126,8 @@ class Tensor:
         )
 
         def _backward():
-            if self.grad:
-                np.add.at(self.grad, idx, result.grad)
+            self.grad = np.zeros_like(self.data, dtype=np.float32) if self.grad is None else self.grad
+            np.add.at(self.grad, idx, result.grad)
 
         result._backward = _backward
         return result
